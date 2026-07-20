@@ -11,13 +11,9 @@ import type {
     PatternDef,
     SvgInstruction,
 } from '../types';
-import {
-    buildIdMap,
-    resolveMarkerDef,
-    resolvePatternDef,
-    walkNode,
-    type WalkContext,
-} from './walk';
+import { resolveMarkerDef } from './marker';
+import { resolvePatternDef } from './pattern';
+import { buildIdMap, walkNode, type WalkContext } from './walk';
 
 // CSS's default size for a replaced element (which an <svg> with no width/height/viewBox is treated as) when nothing else constrains it.
 const FALLBACK_WIDTH = 300;

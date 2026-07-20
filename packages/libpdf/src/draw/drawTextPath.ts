@@ -1,0 +1,56 @@
+import { measureText, ops } from '@libpdf/core';
+
+import { pointAtLength, type TextPathInstruction } from '@delylabs/plotify';
+import { toPdfColor } from '../resources/paint';
+import { concat, type DrawContext, FLIP_Y } from './drawContext';
+
+/*
+ * Unlike a plain 'text' run (one string, one Tj), each character here needs
+ * its own position *and* rotation (the path's tangent at that point), so
+ * it's drawn with its own drawText() call instead of PDF's native Tc/Tw
+ * spacing operators — letterSpacing/wordSpacing are folded straight into
+ * how far `dist` advances between characters instead. No fetchFont/
+ * @font-face lookup here (kept to `instruction.font`'s standard-14 fallback
+ * only) — a deliberate scope trim, not a technical limitation.
+ */
+export const drawTextPath = (instruction: TextPathInstruction, ctx: DrawContext): void => {
+    const chars = Array.from(instruction.text);
+    const charWidths = chars.map((ch) => measureText(ch, instruction.font, instruction.fontSize));
+    const totalAdvance =
+        charWidths.reduce((sum, w) => sum + w, 0) +
+        instruction.letterSpacing * chars.length +
+        instruction.wordSpacing * chars.filter((ch) => ch === ' ').length;
+    const anchorShift =
+        instruction.textAnchor === 'middle'
+            ? -totalAdvance / 2
+            : instruction.textAnchor === 'end'
+              ? -totalAdvance
+              : 0;
+    let dist = instruction.startDistance + anchorShift;
+    for (let i = 0; i < chars.length; i++) {
+        const ch = chars[i];
+        const charWidth = charWidths[i];
+        const point = pointAtLength(instruction.points, instruction.cumLengths, dist);
+        if (point) {
+            /*
+             * Same Y-flip reasoning as `drawText`, applied to both position
+             * and angle: this bracket's FLIP_Y mirrors whatever's drawn
+             * inside it, so a tangent angle computed in the un-flipped
+             * local space (`atan2` in Y-down coordinates) has to be negated
+             * here to still point the right way once mirrored back.
+             */
+            ctx.page.drawOperators([ops.pushGraphicsState(), concat(FLIP_Y)]);
+            ctx.page.drawText(ch, {
+                x: point.x,
+                y: -point.y,
+                rotate: { angle: -(point.angle * 180) / Math.PI },
+                font: instruction.font,
+                size: instruction.fontSize,
+                color: toPdfColor(instruction.fill),
+                opacity: instruction.fillOpacity,
+            });
+            ctx.page.drawOperators([ops.popGraphicsState()]);
+        }
+        dist += charWidth + instruction.letterSpacing + (ch === ' ' ? instruction.wordSpacing : 0);
+    }
+};
