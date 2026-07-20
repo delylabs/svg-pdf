@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="100%" height="100%">
+  <defs>
+    <!-- 1. Linear Gradient Test -->
+    <linearGradient id="linGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff0055" />
+      <stop offset="100%" stop-color="#0055ff" />
+    </linearGradient>
+
+    <!-- 2. Radial Gradient Test -->
+    <radialGradient id="radGrad" cx="50%" cy="50%" r="50%" fx="30%" fy="30%">
+      <stop offset="0%" stop-color="#fff" stop-opacity="1" />
+      <stop offset="100%" stop-color="#333" stop-opacity="1" />
+    </radialGradient>
+
+    <!-- 3. Pattern & Reuse Test -->
+    <pattern id="gridPattern" width="20" height="20" patternUnits="userSpaceOnUse">
+      <rect width="20" height="20" fill="none" stroke="#e0e0e0" stroke-width="0.5"/>
+      <circle cx="10" cy="10" r="1" fill="#ff0000" opacity="0.3"/>
+    </pattern>
+
+    <!-- 4. Clipping Path Test -->
+    <clipPath id="circleClip">
+      <circle cx="500" cy="150" r="55" />
+    </clipPath>
+
+    <!-- 5. Masking Test (Luminance Masking) -->
+    <mask id="fadeMask" maskUnits="objectBoundingBox">
+      <rect x="0" y="0" width="1" height="1" fill="url(#linGrad)" />
+    </mask>
+
+    <!-- 6. Filter Effects Test (Blur + Shadow + Matrix) -->
+    <filter id="complexFilter" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="blur" />
+      <feOffset in="blur" dx="5" dy="5" result="offset" />
+      <feComponentTransfer in="offset" result="shadowAlpha">
+        <feFuncA type="linear" slope="0.6"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode in="shadowAlpha" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <!-- 7. Reusable Symbol Test -->
+    <symbol id="starSymbol" viewBox="0 0 20 20">
+      <polygon points="10,1 13,7 19,8 14,12 16,18 10,15 4,18 6,12 1,8 7,7" fill="gold" stroke="orange" stroke-width="1"/>
+    </symbol>
+  </defs>
+
+  <style>
+    .test-text { font-family: system-ui, sans-serif; font-size: 14px; fill: #333; }
+    .title-text { font-family: system-ui, sans-serif; font-size: 18px; font-weight: bold; fill: #000; }
+    .animated-box { transform-origin: 500px 450px; animation: spin 8s linear infinite; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+  </style>
+
+  <!-- Background Grid Pattern Test -->
+  <rect width="100%" height="100%" fill="url(#gridPattern)" />
+
+  <!-- TITLE -->
+  <text x="20" y="40" class="title-text">SVG Integrated Feature Combination Test Fixture</text>
+
+  <!-- ==================== GROUP 1: GEOMETRY & STROKES ==================== -->
+  <g id="geometry-group" transform="translate(20, 60)">
+    <text x="0" y="20" class="test-text" font-weight="bold">1. Shapes, Paths, and Advanced Strokes</text>
+    
+    <!-- Basic Shapes -->
+    <rect x="0" y="30" width="80" height="50" rx="8" fill="#4CAF50" />
+    <circle cx="140" cy="55" r="25" fill="#008CBA" />
+    <ellipse cx="230" cy="55" rx="30" ry="15" fill="#f44336" />
+    
+    <!-- Path commands (Cubic, Quadratic, Arc) -->
+    <path d="M 290,70 C 310,30 330,30 350,70 Q 370,100 390,70 A 20,20 0 0,1 430,70" fill="none" stroke="#9C27B0" stroke-width="4" stroke-linecap="round"/>
+    
+    <!-- Advanced Stroke Dash Arrays -->
+    <line x1="0" y1="110" x2="200" y2="110" stroke="#333" stroke-width="6" stroke-dasharray="20,10,5,10" />
+    <circle cx="260" cy="110" r="20" fill="none" stroke="#FF5722" stroke-width="4" stroke-dasharray="5,3" />
+  </g>
+
+  <!-- ==================== GROUP 2: GRADIENTS & GRAPHICS ==================== -->
+  <g id="gradients-group" transform="translate(20, 220)">
+    <text x="0" y="20" class="test-text" font-weight="bold">2. Linear/Radial Gradients &amp; Symbols</text>
+    
+    <!-- Linear Gradient applied to path -->
+    <rect x="0" y="30" width="180" height="80" fill="url(#linGrad)" />
+    
+    <!-- Radial Gradient applied to circle -->
+    <circle cx="260" cy="70" r="40" fill="url(#radGrad)" />
+    
+    <!-- Symbol Reusability (<use> tags) -->
+    <use href="#starSymbol" x="330" y="40" width="30" height="30" />
+    <use href="#starSymbol" x="370" y="50" width="40" height="40" />
+    <use href="#starSymbol" x="420" y="35" width="25" height="25" />
+  </g>
+
+  <!-- ==================== GROUP 3: COMPLEX RENDERING ==================== -->
+  <g id="complex-rendering" transform="translate(20, 380)">
+    <text x="0" y="20" class="test-text" font-weight="bold">3. Clipping, Masking, and Filters</text>
+    
+    <!-- Filter Effects (Drop Shadow / Blur) -->
+    <rect x="0" y="40" width="100" height="70" fill="#E91E63" filter="url(#complexFilter)" />
+    
+    <!-- Opacity and Alpha Blending Combinations -->
+    <g opacity="0.7">
+      <circle cx="170" cy="75" r="30" fill="#FFEB3B" style="mix-blend-mode: multiply;" />
+      <circle cx="200" cy="75" r="30" fill="#00BCD4" style="mix-blend-mode: multiply;" />
+    </g>
+  </g>
+
+  <!-- ==================== GROUP 4: INTERACTION & CLIPPING AREA ==================== -->
+  <!-- This section groups elements targeting clipping paths and embedded system text -->
+  <g id="interactive-bounds">
+    <text x="480" y="80" class="test-text" font-weight="bold">4. Clipping Paths &amp; Text-on-Path</text>
+    
+    <!-- Clipped Image/Shape Placeholder -->
+    <rect x="420" y="100" width="160" height="100" fill="#f0f0f0" stroke="#ccc"/>
+    <g clip-path="url(#circleClip)">
+      <rect x="420" y="100" width="160" height="100" fill="url(#linGrad)" />
+      <text x="500" y="155" fill="#fff" font-weight="bold" text-anchor="middle">CLIPPED</text>
+    </g>
+
+    <!-- Text on Path Test -->
+    <path id="textPathCurve" d="M 480,280 Q 580,220 680,280" fill="none" stroke="#ccc" stroke-dasharray="2,2" />
+    <text font-size="12" fill="#555">
+      <textPath href="#textPathCurve" startOffset="50%" text-anchor="middle">
+        Testing curved text-on-path rendering profile.
+      </textPath>
+    </text>
+  </g>
+
+  <!-- ==================== GROUP 5: ANIMATION & TRANSFORMS ==================== -->
+  <g id="animation-group">
+    <text x="480" y="340" class="test-text" font-weight="bold">5. CSS Transform &amp; Animation</text>
+    
+    <!-- Grouped spin animation using CSS -->
+    <g class="animated-box">
+      <rect x="460" y="410" width="80" height="80" rx="10" fill="#3F51B5" opacity="0.8" />
+      <circle cx="500" cy="450" r="15" fill="#fff" />
+      <line x1="500" y1="410" x2="500" y2="490" stroke="#fff" stroke-width="2" />
+      <line x1="460" y1="450" x2="540" y2="450" stroke="#fff" stroke-width="2" />
+    </g>
+    <text x="500" y="520" font-size="11" fill="#777" text-anchor="middle">(Should animate spinning via CSS smoothly)</text>
+  </g>
+</svg>

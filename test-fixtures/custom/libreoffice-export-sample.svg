@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg version="1.2" width="297mm" height="210mm" viewBox="0 0 29700 21000"
+  preserveAspectRatio="xMidYMid" xmlns="http://www.w3.org/2000/svg" xml:space="preserve">
+  <defs>
+    <clipPath id="slide-clip" clipPathUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="29700" height="21000"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#slide-clip)">
+    <rect x="0" y="0" width="29700" height="21000" fill="#f4f4f4"/>
+    <rect x="1000" y="800" width="27700" height="2400" fill="#2b4c7e"/>
+    <text x="1400" y="2400" font-family="sans-serif" font-size="1400" fill="#ffffff">Quarterly Travel Summary</text>
+    <g stroke="#999999" stroke-width="20" fill="#ffffff">
+      <rect x="1000" y="4000" width="9000" height="15500"/>
+      <rect x="10400" y="4000" width="9000" height="15500"/>
+      <rect x="19800" y="4000" width="8900" height="15500"/>
+    </g>
+    <g font-family="sans-serif" font-size="900" fill="#333333">
+      <text x="1400" y="5200">Departures</text>
+      <text x="10800" y="5200">Connections</text>
+      <text x="20200" y="5200">Arrivals</text>
+    </g>
+    <image x="1000" y="12000" width="27700" height="7500" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="/>
+  </g>
+</svg>

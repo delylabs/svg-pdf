@@ -1,0 +1,35 @@
+<svg version="1.1" baseProfile="tiny" id="svg-root"
+  width="100%" height="100%" viewBox="0 0 480 360"
+  xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <!--======================================================================-->
+  <!--=  SVG 1.1 2nd Edition Test Case                                     =-->
+  <!--======================================================================-->
+  <!--=  Copyright 2009 World Wide Web Consortium, (Massachusetts          =-->
+  <!--=  Institute of Technology, European Research Consortium for         =-->
+  <!--=  Informatics and Mathematics (ERCIM), Keio University).            =-->
+  <!--=  All Rights Reserved.                                              =-->
+  <!--=  See http://www.w3.org/Consortium/Legal/.                          =-->
+  <!--======================================================================-->
+  <!-- Verify property inheritance, including 'inherit' and 'currentColor' as gradient stop-color values. -->
+  <title id="test-title">styling-inherit-01-b.svg</title>
+  <g id="test-body-content" font-family="sans-serif" font-size="18">
+    <g fill="yellow">
+      <g stroke="#555">
+        <ellipse rx="90" ry="60" cx="330" cy="140"/>
+      </g>
+    </g>
+    <radialGradient id="ygw" stop-color="green">
+      <stop offset="0%" stop-color="yellow"/>
+      <stop offset="50%" stop-color="inherit"/>
+      <stop offset="100%" stop-color="white"/>
+    </radialGradient>
+    <rect width="180" height="120" x="40" y="20" stroke="none" fill="url(#ygw)"/>
+    <radialGradient id="yrw" color="#700">
+      <stop offset="0%" stop-color="yellow"/>
+      <stop offset="50%" stop-color="currentColor"/>
+      <stop offset="100%" stop-color="white"/>
+    </radialGradient>
+    <rect width="180" height="120" x="40" y="160" stroke="none" fill="url(#yrw)"/>
+  </g>
+  <rect id="test-frame" x="1" y="1" width="478" height="358" fill="none" stroke="#000000"/>
+</svg>

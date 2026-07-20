@@ -1,0 +1,506 @@
+import { measureText, ops, PDF as LibPDF, PdfArray, type PdfRef, PdfStream } from '@libpdf/core';
+import * as fs from 'fs';
+import * as path from 'path';
+import { describe, expect, it, vi } from 'vitest';
+
+import { embedSvgInPdf } from '../svgEmbed';
+
+// A real, minimal 1x1 transparent PNG — same constant as svgCodec.test.ts, aspectRatio 1 makes "meet" fit math easy to verify by hand.
+const ONE_PIXEL_PNG_DATA_URI =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+// Decodes a page's content stream to text for asserting on raw operators.
+const getPageContentText = (doc: ReturnType<typeof LibPDF.create>, pageIndex: number): string => {
+    const page = doc.getPages()[pageIndex];
+    const contents = page.dict.get('Contents');
+    if (!contents) return '';
+    const refs = contents instanceof PdfArray ? [...contents] : [contents];
+    return refs
+        .map((ref) => doc.getObject(ref as PdfRef) as PdfStream)
+        .map((stream) => new TextDecoder('latin1').decode(stream.getDecodedData()))
+        .join('\n');
+};
+
+describe('embedSvgInPdf', () => {
+    it('adds one page sized from the SVG viewBox (no pageSize given)', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText: '<svg viewBox="0 0 200 100"><rect width="10" height="10"/></svg>',
+            rotation: 0,
+        });
+        expect(doc.getPages()).toHaveLength(1);
+        const page = doc.getPages()[0];
+        expect(page.width).toBeCloseTo(200);
+        expect(page.height).toBeCloseTo(100);
+    });
+
+    it('sizes the page from mm width/height (converted to points), not the raw viewBox numbers, when they differ hugely (e.g. a LibreOffice Draw export)', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg width="297mm" height="210mm" viewBox="0 0 29700 21000"><rect width="10" height="10"/></svg>',
+            rotation: 0,
+        });
+        const page = doc.getPages()[0];
+        // A4 landscape in points, not the un-converted 297 x 210.
+        expect(page.width).toBeCloseTo(841.89, 1);
+        expect(page.height).toBeCloseTo(595.28, 1);
+    });
+
+    it('scales content by drawWidth/viewBoxWidth, not drawWidth/display-width, when they differ (the actual bug: without this, content is scaled ~100x too large and only a tiny corner of it is visible)', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg width="297mm" height="210mm" viewBox="0 0 29700 21000"><rect width="10" height="10"/></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        const match = content.match(/([\d.-]+) 0 0 (-?[\d.-]+) [\d.-]+ [\d.-]+ cm/);
+        expect(match).not.toBeNull();
+        // scale = drawWidth (≈841.89pt) / viewBoxWidth (29700), not / display width (297).
+        expect(Number(match![1])).toBeCloseTo(841.89 / 29700, 5);
+    });
+
+    it('emits fill and stroke color operators for a shape with both set', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 10 10"><rect width="10" height="10" fill="#ff0000" stroke="#0000ff"/></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        expect(content).toMatch(/1 0 0 rg/); // non-stroking (fill) red
+        expect(content).toMatch(/0 0 1 RG/); // stroking (border) blue
+        expect(content).toMatch(/\bB\b/); // combined fill+stroke paint operator
+    });
+
+    it('draws nothing for a shape with fill="none" stroke="none" (no fallback black fill)', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 10 10"><rect width="10" height="10" fill="none" stroke="none"/></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        expect(content).not.toMatch(/0 0 0 rg/); // no default black fill leaked in
+    });
+
+    it('wraps nested <g transform> content in balanced push/pop graphics state operators', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 100 100"><g transform="translate(10,10)"><rect width="5" height="5" fill="#000000"/></g></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        const pushCount = (content.match(/\bq\b/g) ?? []).length;
+        const popCount = (content.match(/\bQ\b/g) ?? []).length;
+        expect(pushCount).toBe(popCount);
+        expect(pushCount).toBeGreaterThanOrEqual(2); // root matrix push + the <g>'s own push
+    });
+
+    it('keeps the root viewBox-to-page matrix active for the first drawn shape', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 100 100"><g transform="translate(10,10)"><rect x="0" y="0" width="10" height="10" fill="#ff0000"/></g></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        const fillIndex = content.indexOf('1 0 0 rg');
+        expect(fillIndex).toBeGreaterThan(-1);
+        const before = content.slice(0, fillIndex);
+        const pushCount = (before.match(/(^|\s)q(\s|$)/g) ?? []).length;
+        const popCount = (before.match(/(^|\s)Q(\s|$)/g) ?? []).length;
+        /*
+         * Root matrix push + the <g>'s own push must both still be open when the
+         * shape draws. @libpdf/core isolates a page's very first drawOperators()
+         * call in its own q/Q once a second call arrives (see the canary test
+         * below) — the workaround in svgEmbed.ts is a no-op first call so the
+         * root matrix survives as the *second* call instead. If that regresses,
+         * this nets to 0 or 1 instead of 2.
+         */
+        expect(pushCount - popCount).toBeGreaterThanOrEqual(2);
+        expect(before).toContain('1 0 0 -1 0 100 cm');
+    });
+
+    it('applies page rotation', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText: '<svg viewBox="0 0 10 10"><rect width="10" height="10"/></svg>',
+            rotation: 90,
+        });
+        expect(doc.getPages()[0].rotation).toBe(90);
+    });
+
+    it('returns collected warnings for unsupported elements instead of throwing', async () => {
+        const doc = LibPDF.create();
+        const result = await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 10 10"><image href="a.png" width="5" height="5"/><rect width="10" height="10"/></svg>',
+            rotation: 0,
+        });
+        expect(result.warnings.some((w) => w.includes('image'))).toBe(true);
+        expect(doc.getPages()).toHaveLength(1);
+    });
+
+    it('throws FILE_CORRUPT_OR_INVALID for malformed SVG, matching the image-embed error convention', async () => {
+        const doc = LibPDF.create();
+        await expect(
+            embedSvgInPdf(doc, {
+                svgText: '<svg><rect></svg>',
+                rotation: 0,
+                name: 'bad.svg',
+            }),
+        ).rejects.toThrow(/FILE_CORRUPT_OR_INVALID: bad\.svg/);
+    });
+
+    it('centers the SVG within a larger explicit pageSize', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText: '<svg viewBox="0 0 10 10"><rect width="10" height="10"/></svg>',
+            rotation: 0,
+            pageSize: { width: 200, height: 300 },
+        });
+        const page = doc.getPages()[0];
+        expect(page.width).toBeCloseTo(200);
+        expect(page.height).toBeCloseTo(300);
+    });
+
+    it('fills a gradient-referencing shape with a pattern instead of a solid color', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 10 10"><defs><linearGradient id="g"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        // Pattern color space + a named pattern resource selected for fill, not a plain `rg` solid fill.
+        expect(content).toMatch(/\/Pattern\s+cs/);
+        expect(content).toMatch(/\/P\d+\s+scn/);
+        expect(content).not.toMatch(/1 0 0 rg/);
+    });
+
+    it('registers an ExtGState with the requested blend mode for mix-blend-mode', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="5" fill="#ff0000" style="mix-blend-mode: multiply;"/></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        expect(content).toMatch(/\/GS\d+\s+gs/);
+        const pushCount = (content.match(/\bq\b/g) ?? []).length;
+        const popCount = (content.match(/\bQ\b/g) ?? []).length;
+        expect(pushCount).toBe(popCount);
+
+        const saved = await doc.save();
+        const raw = new TextDecoder('latin1').decode(saved);
+        expect(raw).toMatch(/\/BM\s*\/Multiply/);
+    });
+
+    it('emits a dash pattern operator for a stroke with stroke-dasharray', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="0" stroke="#000000" stroke-dasharray="5,3" stroke-dashoffset="2"/></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        expect(content).toMatch(/\[5 3\]\s*2\s*d/);
+    });
+
+    it('does not emit a dash pattern operator for a plain (non-dashed) stroke', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="0" stroke="#000000"/></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        expect(content).not.toMatch(/\bd\b/);
+    });
+
+    it('emits a balanced clip (W n) bracket around a clip-path target', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 100 100"><defs><clipPath id="c"><circle cx="50" cy="50" r="20"/></clipPath></defs><rect width="100" height="100" fill="#ff0000" clip-path="url(#c)"/></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        expect(content).toMatch(/\bW\b\s*\n?\s*n\b/);
+        const pushCount = (content.match(/\bq\b/g) ?? []).length;
+        const popCount = (content.match(/\bQ\b/g) ?? []).length;
+        expect(pushCount).toBe(popCount);
+    });
+
+    it('draws <text> with a Tj showText operator wrapped in a balanced q/Q bracket', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 100 100"><text x="10" y="20" fill="#ff0000">Hello</text></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        expect(content).toMatch(/<48656C6C6F>\s*Tj/);
+        const pushCount = (content.match(/\bq\b/g) ?? []).length;
+        const popCount = (content.match(/\bQ\b/g) ?? []).length;
+        expect(pushCount).toBe(popCount);
+    });
+
+    it('shifts x left by exactly half the font-measured text width for text-anchor=middle', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 100 100"><text x="50" y="20" text-anchor="middle">Hi</text></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        const match = content.match(/1 0 0 1 (-?[\d.]+) -20 Tm/);
+        expect(match).not.toBeNull();
+        const expectedWidth = measureText('Hi', 'Helvetica', 16);
+        expect(Number(match![1])).toBeCloseTo(50 - expectedWidth / 2, 5);
+    });
+
+    it('shifts x left by exactly the full font-measured text width for text-anchor=end', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 100 100"><text x="50" y="20" text-anchor="end">Hi</text></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        const match = content.match(/1 0 0 1 (-?[\d.]+) -20 Tm/);
+        expect(match).not.toBeNull();
+        const expectedWidth = measureText('Hi', 'Helvetica', 16);
+        expect(Number(match![1])).toBeCloseTo(50 - expectedWidth, 5);
+    });
+
+    it("draws consecutive flow-continuing tspans starting exactly where the previous one's measured text ended", async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 200 100"><text x="10" y="20"><tspan>Hello</tspan><tspan>World</tspan></text></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        const matches = [...content.matchAll(/1 0 0 1 (-?[\d.]+) -20 Tm/g)].map((m) =>
+            Number(m[1]),
+        );
+        expect(matches).toHaveLength(2);
+        expect(matches[0]).toBeCloseTo(10, 5);
+        const helloWidth = measureText('Hello', 'Helvetica', 16);
+        expect(matches[1]).toBeCloseTo(10 + helloWidth, 5);
+    });
+
+    it('does not let a flow-continuing tspan leak into an unrelated later text run', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 200 100"><text><tspan x="10" y="20"><tspan>Line1</tspan></tspan><tspan x="10" y="40"><tspan>Line2</tspan></tspan></text></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        const firstLineX = content.match(/1 0 0 1 (-?[\d.]+) -20 Tm/);
+        const secondLineX = content.match(/1 0 0 1 (-?[\d.]+) -40 Tm/);
+        expect(firstLineX).not.toBeNull();
+        expect(secondLineX).not.toBeNull();
+        expect(Number(firstLineX![1])).toBeCloseTo(10, 5);
+        // Must start at its own x=10, not continue from Line1's end (10 + measured width of "Line1").
+        expect(Number(secondLineX![1])).toBeCloseTo(10, 5);
+    });
+
+    it('draws a data: URI <image> stretched to the exact box for preserveAspectRatio="none"', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText: `<svg viewBox="0 0 100 100"><image href="${ONE_PIXEL_PNG_DATA_URI}" x="10" y="20" width="30" height="40" preserveAspectRatio="none"/></svg>`,
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        const match = content.match(/([\d.-]+) 0 0 ([\d.-]+) ([\d.-]+) ([\d.-]+) cm\s*\/\w+ Do/);
+        expect(match).not.toBeNull();
+        const [, w, h, x, y] = match!.map(Number);
+        expect(w).toBeCloseTo(30);
+        expect(h).toBeCloseTo(40);
+        expect(x).toBeCloseTo(10);
+        // -(imgY + imgHeight) = -(20 + 40)
+        expect(y).toBeCloseTo(-60);
+    });
+
+    it('fits (centers + scales) a square image inside a non-square box for the default "meet" mode', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText: `<svg viewBox="0 0 100 100"><image href="${ONE_PIXEL_PNG_DATA_URI}" x="10" y="20" width="30" height="40"/></svg>`,
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        const match = content.match(/([\d.-]+) 0 0 ([\d.-]+) ([\d.-]+) ([\d.-]+) cm\s*\/\w+ Do/);
+        expect(match).not.toBeNull();
+        const [, w, h, x, y] = match!.map(Number);
+        // A 1:1 image in a 30x40 box: constrained by the narrower dimension (30), so it draws as 30x30, centered vertically.
+        expect(w).toBeCloseTo(30);
+        expect(h).toBeCloseTo(30);
+        expect(x).toBeCloseTo(10);
+        // imgY = 20 + (40 - 30) / 2 = 25; drawImage y = -(imgY + imgHeight) = -(25 + 30)
+        expect(y).toBeCloseTo(-55);
+    });
+
+    it('warns and skips (without crashing) when the data: URI is not valid base64', async () => {
+        const doc = LibPDF.create();
+        const result = await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 100 100"><image href="data:image/png;base64,!!!not-valid-base64!!!" width="10" height="10"/></svg>',
+            rotation: 0,
+        });
+        expect(result.warnings.some((w) => w.includes('could not be decoded'))).toBe(true);
+        const content = getPageContentText(doc, 0);
+        expect(content).not.toMatch(/Do\b/);
+    });
+
+    it('warns and skips an external-URL <image> when no fetchImage function is provided (default: no network requests)', async () => {
+        const doc = LibPDF.create();
+        const result = await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 100 100"><image href="https://example.com/a.png" width="10" height="10"/></svg>',
+            rotation: 0,
+        });
+        expect(result.warnings.some((w) => w.includes('fetchImage'))).toBe(true);
+        const content = getPageContentText(doc, 0);
+        expect(content).not.toMatch(/Do\b/);
+    });
+
+    it('embeds an external-URL <image> by calling the caller-supplied fetchImage', async () => {
+        const doc = LibPDF.create();
+        const pngBase64 = ONE_PIXEL_PNG_DATA_URI.slice(ONE_PIXEL_PNG_DATA_URI.indexOf(',') + 1);
+        const bytes = new Uint8Array(Buffer.from(pngBase64, 'base64'));
+        const fetchImage = vi.fn(async () => ({ bytes, mimeType: 'image/png' }));
+        const result = await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 100 100"><image href="https://example.com/a.png" width="10" height="10"/></svg>',
+            rotation: 0,
+            fetchImage,
+        });
+        expect(fetchImage).toHaveBeenCalledWith('https://example.com/a.png');
+        expect(result.warnings).toEqual([]);
+        const content = getPageContentText(doc, 0);
+        expect(content).toMatch(/\/\w+ Do/);
+    });
+
+    it('warns and skips (without crashing) when fetchImage throws or returns null', async () => {
+        const doc = LibPDF.create();
+        const result = await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 100 100"><image href="https://example.com/a.png" width="10" height="10"/></svg>',
+            rotation: 0,
+            fetchImage: async () => {
+                throw new Error('network error');
+            },
+        });
+        expect(result.warnings.some((w) => w.includes('could not be fetched'))).toBe(true);
+        const content = getPageContentText(doc, 0);
+        expect(content).not.toMatch(/Do\b/);
+    });
+
+    it('never calls fetchImage for a non-external href, even if provided', async () => {
+        const doc = LibPDF.create();
+        const fetchImage = vi.fn();
+        await embedSvgInPdf(doc, {
+            svgText: `<svg viewBox="0 0 100 100"><image href="${ONE_PIXEL_PNG_DATA_URI}" width="10" height="10"/></svg>`,
+            rotation: 0,
+            fetchImage,
+        });
+        expect(fetchImage).not.toHaveBeenCalled();
+    });
+});
+
+const FIXTURES_DIR = path.resolve(process.cwd(), 'test-fixtures/custom');
+const hasFixtures = fs.existsSync(FIXTURES_DIR);
+
+const loadFixture = (name: string): string =>
+    fs.readFileSync(path.join(FIXTURES_DIR, name), 'utf8');
+
+describe.skipIf(!hasFixtures)('embedSvgInPdf (real-world-shaped fixtures)', () => {
+    it('embeds a minimal line icon as a single sized page', async () => {
+        const doc = LibPDF.create();
+        const result = await embedSvgInPdf(doc, {
+            svgText: loadFixture('icon-line-simple.svg'),
+            rotation: 0,
+        });
+        expect(result.warnings).toEqual([]);
+        expect(doc.getPages()).toHaveLength(1);
+        expect(doc.getPages()[0].width).toBeCloseTo(24);
+    });
+
+    it('embeds a flag-shaped SVG with visible fill content', async () => {
+        const doc = LibPDF.create();
+        const result = await embedSvgInPdf(doc, {
+            svgText: loadFixture('star-ring.svg'),
+            rotation: 0,
+        });
+        expect(result.warnings).toEqual([]);
+        const content = getPageContentText(doc, 0);
+        expect(content.length).toBeGreaterThan(1000);
+    });
+
+    it('embeds a stress-test mandala (220+ paths through a real matrix() root transform)', async () => {
+        const doc = LibPDF.create();
+        const result = await embedSvgInPdf(doc, {
+            svgText: loadFixture('stress-mandala.svg'),
+            rotation: 0,
+        });
+        expect(result.warnings).toEqual([]);
+        const content = getPageContentText(doc, 0);
+        const pushCount = (content.match(/\bq\b/g) ?? []).length;
+        const popCount = (content.match(/\bQ\b/g) ?? []).length;
+        expect(pushCount).toBe(popCount);
+        expect(pushCount).toBeGreaterThan(200);
+    }, 15000);
+
+    it('embeds a kitchen-sink SVG (gradients/patterns/clip/mask/filter/text/CSS at once) without throwing', async () => {
+        const doc = LibPDF.create();
+        const result = await embedSvgInPdf(doc, {
+            svgText: loadFixture('kitchen-sink.svg'),
+            rotation: 0,
+        });
+        expect(doc.getPages()).toHaveLength(1);
+        expect(doc.getPages()[0].width).toBeCloseTo(800);
+        expect(result.warnings.length).toBeGreaterThan(0);
+    });
+
+    it('correctly sizes and scales a mm/viewBox-mismatched export', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText: loadFixture('libreoffice-export-sample.svg'),
+            rotation: 0,
+        });
+        expect(doc.getPages()).toHaveLength(1);
+        const page = doc.getPages()[0];
+        // A4 landscape in points, not the un-converted 297 x 210.
+        expect(page.width).toBeCloseTo(841.89, 0);
+        expect(page.height).toBeCloseTo(595.28, 0);
+        const content = getPageContentText(doc, 0);
+        const match = content.match(/([\d.-]+) 0 0 (-?[\d.-]+) [\d.-]+ [\d.-]+ cm/);
+        expect(match).not.toBeNull();
+        // scale = drawWidth (≈841.89pt) / viewBoxWidth (29700) ≈ 0.02835, not / display width (297) ≈ 2.835 (100x too large).
+        expect(Number(match![1])).toBeCloseTo(841.89 / 29700, 3);
+        // @libpdf/core names every embedded XObject (images included) with an "Fm" prefix, not "Im".
+        expect(content).toMatch(/\/\w+ Do/);
+    });
+});
+
+describe('@libpdf/core content-stream isolation quirk (canary)', () => {
+    it('still isolates the page’s first drawOperators() call once a second call arrives', () => {
+        const doc = LibPDF.create();
+        const page = doc.addPage({ width: 100, height: 100 });
+        page.drawOperators([ops.pushGraphicsState(), ops.concatMatrix(2, 0, 0, 2, 0, 0)]);
+        page.drawOperators([ops.pushGraphicsState(), ops.popGraphicsState()]);
+        const content = getPageContentText(doc, 0);
+        /*
+         * If @libpdf/core ever stops isolating a page's first drawOperators()
+         * call, this assertion fails — that's the signal to delete the no-op
+         * first call workaround in svgEmbed.ts (see its comment) and this test.
+         */
+        expect(content).toMatch(/2 0 0 2 0 0 cm\s*\n?\s*Q/);
+    });
+});

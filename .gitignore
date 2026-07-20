@@ -1,0 +1,5 @@
+node_modules/
+dist/
+*.tsbuildinfo
+test-fixtures/visual-baselines/.debug/
+docs/project-structure.txt

@@ -1,0 +1,10 @@
+<svg viewBox="0 0 480 360" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <rect x="5" y="5" width="470" height="350" fill="none" stroke="grey"/>
+  <marker id="arrow" orient="auto" overflow="visible" markerWidth="1" markerHeight="1">
+    <path d="M -1 -0.6 L 0.6 0 L -1 0.6 Z" fill="orange"/>
+  </marker>
+  <text x="30" y="40">Marker orientation test: three orange arrowheads, none pointing red.</text>
+  <path d="M100,300 C100,180 180,100 260,100" stroke="navy" stroke-width="6" fill="none" marker-start="url(#arrow)"/>
+  <path d="M280,300 Q320,150 400,120" stroke="navy" stroke-width="6" fill="none" marker-start="url(#arrow)"/>
+  <path d="M420,300 L440,120" stroke="navy" stroke-width="6" fill="none" marker-start="url(#arrow)"/>
+</svg>

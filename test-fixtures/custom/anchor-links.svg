@@ -1,0 +1,20 @@
+<svg viewBox="0 0 480 360" xmlns="http://www.w3.org/2000/svg">
+  <g font-size="18">
+    <text x="130" y="60">
+      <a href="https://example.com/link-inside-text">Link inside text</a>
+    </text>
+    <a href="https://example.com/link-around-text">
+      <text x="130" y="100">Link around text</text>
+    </a>
+    <text x="130" y="140">
+      A <tspan><a href="https://example.com/link-inside-tspan">link inside tspan</a></tspan> here
+    </text>
+    <text x="130" y="180">
+      A <a href="https://example.com/link-around-tspan"><tspan>link around tspan</tspan></a> here
+    </text>
+    <a href="https://example.com/link-around-shape">
+      <circle cx="80" cy="260" r="35" fill="cornflowerblue"/>
+    </a>
+    <text x="130" y="265">Link around a shape (circle)</text>
+  </g>
+</svg>

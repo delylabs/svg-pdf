@@ -1,0 +1,44 @@
+{
+    "name": "plotify",
+    "private": true,
+    "type": "module",
+    "workspaces": [
+        "packages/*"
+    ],
+    "scripts": {
+        "test": "vitest run --config config/vitest.config.ts",
+        "test:watch": "vitest --config config/vitest.config.ts",
+        "test:visual": "vitest run --config config/vitest.visual.config.ts",
+        "typecheck": "tsc -b",
+        "lint:comments": "node scripts/check-comment-convention.js",
+        "lint": "eslint .",
+        "lint:fix": "eslint . --fix",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "docs:structure": "node scripts/generate-project-structure.js",
+        "prepare": "node scripts/setup-git-hooks.js"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@napi-rs/canvas": "^1.0.2",
+        "@resvg/resvg-js": "^2.6.2",
+        "@types/node": "^26.1.1",
+        "@types/pngjs": "^6.0.5",
+        "eslint": "^10.7.0",
+        "eslint-config-prettier": "^10.1.8",
+        "globals": "^17.7.0",
+        "pdfjs-dist": "^6.1.200",
+        "pixelmatch": "^7.2.0",
+        "pngjs": "^7.0.0",
+        "prettier": "^3.9.5",
+        "typescript": "^6.0.3",
+        "typescript-eslint": "^8.64.0",
+        "vitest": "^4.1.10"
+    },
+    "prettier": {
+        "tabWidth": 4,
+        "singleQuote": true,
+        "trailingComma": "all",
+        "printWidth": 100
+    }
+}

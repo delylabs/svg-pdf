@@ -1,0 +1,68 @@
+/**
+ * Parses an SVG document into a flat, worker-safe instruction list that
+ * `svgEmbed.ts` replays as PDF drawing calls — no DOM/canvas rendering
+ * involved, so this runs in the PDF worker like every other codec here.
+ *
+ * Two things a DOM-based parser would normally lean on — text measuring and
+ * CSS `<style>` cascade parsing — both require a real attached `document`,
+ * which doesn't exist in a Web Worker, so both are hand-rolled here instead:
+ * `<text>` (see the "best effort" doc comment above `walkTextElement` in
+ * `parse/walk.ts`) draws with PDF's own standard-14 fonts rather than
+ * measuring/matching real ones, and `<style>` block support (see the doc
+ * comment above `CssRule` in `style/stylesheet.ts`) only covers simple
+ * tag/class/id selectors, not the full CSS cascade.
+ */
+
+export type {
+    BlendMode,
+    FillRule,
+    GradientPaintRef,
+    ImageInstruction,
+    LineCap,
+    LineJoin,
+    Paint,
+    ParsedSvgDocument,
+    ParsedSvgSize,
+    PreserveAspectRatioMode,
+    PushClipInstruction,
+    ShapeInstruction,
+    ShapePaint,
+    StandardFontName,
+    SvgInstruction,
+    TextAnchor,
+    TextInstruction,
+} from './types';
+
+export {
+    IDENTITY_MATRIX,
+    invertMatrix,
+    isIdentityMatrix,
+    type Matrix2D,
+    multiplyMatrix,
+    parseTransformList,
+} from './geometry/matrix';
+
+export {
+    circleToPathData,
+    computeShapeBBox,
+    ellipseElToPathData,
+    lineToPathData,
+    polygonToPathData,
+    polylineToPathData,
+    rectToPathData,
+    shapeToPathData,
+} from './geometry/path';
+
+export { type BBoxRect, computePathBBox } from './geometry/bbox';
+
+export { parseSvgColor, type RgbColor } from './style/color';
+
+export type {
+    GradientDef,
+    GradientStop,
+    GradientUnits,
+    LinearGradientDef,
+    RadialGradientDef,
+} from './style/gradient';
+
+export { parseSvgDocument, parseSvgRoot, resolveSvgSize } from './parse/document';
