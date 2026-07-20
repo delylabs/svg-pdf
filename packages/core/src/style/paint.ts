@@ -7,6 +7,7 @@ import type {
     PatternDef,
     ShapePaint,
     StandardFontName,
+    TextTransform,
 } from '../types';
 import { parseFloats } from '../geometry/matrix';
 import { CSS_NAMED_COLORS, parseSvgColor } from './color';
@@ -51,6 +52,10 @@ export const DEFAULT_PAINT: ShapePaint = {
     fontWeight: 'normal',
     fontStyle: 'normal',
     textAnchor: 'start',
+    textTransform: 'none',
+    letterSpacing: 0,
+    wordSpacing: 0,
+    preserveWhitespace: false,
 };
 
 /*
@@ -145,13 +150,27 @@ export const resolveStandardFont = (
     return 'Helvetica';
 };
 
-// Concatenates only this element's own direct text-node children (not descendant elements' text).
-export const collectDirectText = (el: Element): string => {
+// Concatenates only this element's own direct text-node children (not descendant elements' text). Whitespace is collapsed to a single space and trimmed, same as browsers do by default — unless `preserveWhitespace` (from `xml:space="preserve"`/`white-space: pre`) says not to.
+export const collectDirectText = (el: Element, preserveWhitespace: boolean): string => {
     let out = '';
     for (const node of Array.from(el.childNodes)) {
         if (node.nodeType === 3) out += node.nodeValue ?? ''; // 3 = Node.TEXT_NODE (no `Node` global in a worker)
     }
-    return out.replace(/\s+/g, ' ').trim();
+    return preserveWhitespace ? out : out.replace(/\s+/g, ' ').trim();
+};
+
+// `text-transform`, applied to a run's already-collected text content (case mapping only — no locale-aware casing, same "common case" scope as the rest of this module).
+export const applyTextTransform = (text: string, transform: TextTransform): string => {
+    switch (transform) {
+        case 'uppercase':
+            return text.toUpperCase();
+        case 'lowercase':
+            return text.toLowerCase();
+        case 'capitalize':
+            return text.replace(/\b\w/g, (ch) => ch.toUpperCase());
+        default:
+            return text;
+    }
 };
 
 // Standard-14 fonts use WinAnsi-ish encoding (~Latin-1); anything beyond that silently renders blank, so it's worth a warning.
@@ -207,6 +226,15 @@ export const resolvePaint = (el: Element, inherited: ShapePaint, ctx: PaintConte
     const fontWeightRaw = readPresentation(el, 'font-weight', ctx.cssRules);
     const fontStyleRaw = readPresentation(el, 'font-style', ctx.cssRules);
     const textAnchorRaw = readPresentation(el, 'text-anchor', ctx.cssRules);
+    const textTransformRaw = readPresentation(el, 'text-transform', ctx.cssRules);
+    const letterSpacingRaw = readPresentation(el, 'letter-spacing', ctx.cssRules);
+    const wordSpacingRaw = readPresentation(el, 'word-spacing', ctx.cssRules);
+    const whiteSpaceRaw = readPresentation(el, 'white-space', ctx.cssRules);
+    // `xml:space` is an XML attribute, not a CSS property — never routed through `readPresentation`/`cssRules`, only ever read straight off the element.
+    const xmlSpaceRaw = el.getAttribute('xml:space');
+
+    const fontSize =
+        fontSizeRaw !== null ? parseFontSize(fontSizeRaw, inherited.fontSize) : inherited.fontSize;
 
     return {
         fill: resolveColorAttr('fill', inherited.fill),
@@ -225,10 +253,7 @@ export const resolvePaint = (el: Element, inherited: ShapePaint, ctx: PaintConte
         blendMode: blendModeRaw
             ? (CSS_BLEND_MODES[blendModeRaw.trim().toLowerCase()] ?? 'Normal')
             : 'Normal',
-        fontSize:
-            fontSizeRaw !== null
-                ? parseFontSize(fontSizeRaw, inherited.fontSize)
-                : inherited.fontSize,
+        fontSize,
         fontFamily: fontFamilyRaw ?? inherited.fontFamily,
         fontWeight: fontWeightRaw ?? inherited.fontWeight,
         fontStyle: fontStyleRaw ?? inherited.fontStyle,
@@ -238,5 +263,28 @@ export const resolvePaint = (el: Element, inherited: ShapePaint, ctx: PaintConte
                 : textAnchorRaw === 'start'
                   ? 'start'
                   : inherited.textAnchor,
+        textTransform: (['uppercase', 'lowercase', 'capitalize', 'none'] as const).includes(
+            textTransformRaw as TextTransform,
+        )
+            ? (textTransformRaw as TextTransform)
+            : inherited.textTransform,
+        letterSpacing:
+            letterSpacingRaw !== null
+                ? parseLengthOrEm(letterSpacingRaw, fontSize)
+                : inherited.letterSpacing,
+        wordSpacing:
+            wordSpacingRaw !== null
+                ? parseLengthOrEm(wordSpacingRaw, fontSize)
+                : inherited.wordSpacing,
+        preserveWhitespace:
+            xmlSpaceRaw === 'preserve'
+                ? true
+                : xmlSpaceRaw === 'default'
+                  ? false
+                  : whiteSpaceRaw === 'pre'
+                    ? true
+                    : whiteSpaceRaw !== null
+                      ? false
+                      : inherited.preserveWhitespace,
     };
 };

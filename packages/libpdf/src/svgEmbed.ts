@@ -8,7 +8,9 @@ import {
 } from '@libpdf/core';
 
 import {
+    type BBoxRect,
     type BlendMode,
+    computePathBBox,
     computeViewBoxTransform,
     type FontFaceDef,
     invertMatrix,
@@ -16,6 +18,7 @@ import {
     type Matrix2D,
     multiplyMatrix,
     parseSvgDocument,
+    pointAtLength,
     scaleMatrix,
     type TextInstruction,
     translateMatrix,
@@ -335,7 +338,21 @@ export const embedSvgInPdf = async (
             const embedded = embeddedFontCache.get(key) ?? null;
             if (embedded) font = embedded;
             textFonts.set(instruction, font);
-            textWidths.set(instruction, measureText(instruction.text, font, instruction.fontSize));
+            /*
+             * `letterSpacing`/`wordSpacing` are drawn via PDF's own `Tc`/`Tw`
+             * text-state operators (see the 'text' case below), which add
+             * their amount after every character/every literal space shown
+             * respectively — mirroring that exactly here (rather than
+             * approximating) keeps this measured width the same number PDF
+             * will actually render at, so text-anchor/flow-cursor math
+             * stays exact instead of drifting when spacing is non-zero.
+             */
+            const numSpaces = (instruction.text.match(/ /g) ?? []).length;
+            const width =
+                measureText(instruction.text, font, instruction.fontSize) +
+                instruction.letterSpacing * instruction.text.length +
+                instruction.wordSpacing * numSpaces;
+            textWidths.set(instruction, width);
             if (instruction.startsNewChunk) flushChunk();
             chunk.push(instruction);
         }
@@ -351,15 +368,92 @@ export const embedSvgInPdf = async (
         return xobject;
     };
 
+    /*
+     * Mirrors core's own `accMatrix` accumulation (see `walk.ts`'s
+     * `elMatrix`/`groupMatrix`) on this side of the fence: `pushMatrix`/
+     * `popMatrix` instructions are the only things that change the ambient
+     * transform a shape/text/image instruction's local coordinates are
+     * drawn under, so tracking them here gives the exact matrix PDF's own
+     * CTM has active at that instruction — needed to turn an `<a>`'s
+     * wrapped content into one absolute, page-space `Rect` for
+     * `addLinkAnnotation` (annotations aren't part of the content stream,
+     * so they can't just inherit the CTM the way a `drawSvgPath`/`drawText`
+     * call does).
+     */
+    let currentMatrix: Matrix2D = rootMatrix;
+    const matrixStack: Matrix2D[] = [];
+    const transformPoint = (m: Matrix2D, x: number, y: number): { x: number; y: number } => ({
+        x: m.a * x + m.c * y + m.e,
+        y: m.b * x + m.d * y + m.f,
+    });
+
+    // Open `<a>` link's accumulating page-space bbox — `null` when no link is currently open. Only one at a time: nested `<a>` isn't meaningful content, so a stray nested `linkStart` flushes the outer one first rather than losing it.
+    let openLink: { href: string; minX: number; minY: number; maxX: number; maxY: number } | null =
+        null;
+    const includeLinkBBox = (localBBox: BBoxRect): void => {
+        if (!openLink) return;
+        const corners = [
+            [localBBox.x, localBBox.y],
+            [localBBox.x + localBBox.width, localBBox.y],
+            [localBBox.x, localBBox.y + localBBox.height],
+            [localBBox.x + localBBox.width, localBBox.y + localBBox.height],
+        ];
+        for (const [x, y] of corners) {
+            const p = transformPoint(currentMatrix, x, y);
+            openLink.minX = Math.min(openLink.minX, p.x);
+            openLink.minY = Math.min(openLink.minY, p.y);
+            openLink.maxX = Math.max(openLink.maxX, p.x);
+            openLink.maxY = Math.max(openLink.maxY, p.y);
+        }
+    };
+    const flushLink = (): void => {
+        if (!openLink) return;
+        const { href, minX, minY, maxX, maxY } = openLink;
+        if (maxX > minX && maxY > minY) {
+            page.addLinkAnnotation({
+                rect: { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
+                uri: href,
+            });
+        }
+        openLink = null;
+    };
+
     for (const instruction of instructions) {
         switch (instruction.type) {
             case 'pushMatrix':
                 page.drawOperators([ops.pushGraphicsState(), concat(instruction.matrix)]);
+                matrixStack.push(currentMatrix);
+                currentMatrix = multiplyMatrix(instruction.matrix, currentMatrix);
                 break;
             case 'popMatrix':
                 page.drawOperators([ops.popGraphicsState()]);
+                currentMatrix = matrixStack.pop() ?? rootMatrix;
+                break;
+            case 'linkStart':
+                flushLink();
+                openLink = {
+                    href: instruction.href,
+                    minX: Infinity,
+                    minY: Infinity,
+                    maxX: -Infinity,
+                    maxY: -Infinity,
+                };
+                break;
+            case 'linkEnd':
+                flushLink();
                 break;
             case 'shape': {
+                /*
+                 * Included regardless of fill/stroke — an invisible
+                 * `fill="none"` shape wrapped in an `<a>` is a common
+                 * real-world "transparent clickable overlay" pattern, and
+                 * its geometry (not its paint) is what defines the
+                 * intended clickable region.
+                 */
+                if (openLink) {
+                    const localBBox = computePathBBox(instruction.d);
+                    if (localBBox) includeLinkBBox(localBBox);
+                }
                 if (!instruction.fill && !instruction.stroke) break;
                 const fill = resolvePaint(
                     instruction.fill,
@@ -467,7 +561,33 @@ export const embedSvgInPdf = async (
                     instruction.continuesFlow && flowCursorX !== null ? flowCursorX : instruction.x;
                 flowCursorX = startX + textWidth;
                 const anchorOffsetX = textAnchorOffsets.get(instruction) ?? 0;
-                page.drawOperators([ops.pushGraphicsState(), concat(FLIP_Y)]);
+                /*
+                 * No real glyph ascent/descent metrics are threaded through
+                 * here (same "no library-specific font math in the shared
+                 * path" reasoning as elsewhere) — approximated the same way
+                 * @libpdf/core's own `drawText` rotate-bounds math does for
+                 * a standard font (ascent ~0.8em above baseline, descent
+                 * ~0.2em below), which is only ever used for a link's
+                 * clickable-area estimate, not for anything pixel-exact.
+                 */
+                if (openLink) {
+                    includeLinkBBox({
+                        x: startX + anchorOffsetX,
+                        y: instruction.y - instruction.fontSize * 0.8,
+                        width: textWidth,
+                        height: instruction.fontSize,
+                    });
+                }
+                const spacingOps = [
+                    ...(instruction.letterSpacing !== 0
+                        ? [ops.setCharSpacing(instruction.letterSpacing)]
+                        : []),
+                    ...(instruction.wordSpacing !== 0
+                        ? [ops.setWordSpacing(instruction.wordSpacing)]
+                        : []),
+                ];
+                // Tc/Tw are text-state parameters, saved/restored by q/Q same as any other graphics state — scoping them inside this instruction's own push/pop bracket means drawText() (which pushes its own nested q/Q but never touches Tc/Tw itself) still inherits them for its Tj call, with no explicit reset needed after.
+                page.drawOperators([ops.pushGraphicsState(), concat(FLIP_Y), ...spacingOps]);
                 page.drawText(instruction.text, {
                     x: startX + anchorOffsetX,
                     y: -instruction.y,
@@ -477,6 +597,65 @@ export const embedSvgInPdf = async (
                     opacity: instruction.fillOpacity,
                 });
                 page.drawOperators([ops.popGraphicsState()]);
+                break;
+            }
+            case 'textPath': {
+                /*
+                 * Unlike a plain 'text' run (one string, one Tj), each
+                 * character here needs its own position *and* rotation (the
+                 * path's tangent at that point), so it's drawn with its own
+                 * drawText() call instead of PDF's native Tc/Tw spacing
+                 * operators — letterSpacing/wordSpacing are folded straight
+                 * into how far `dist` advances between characters instead.
+                 * No fetchFont/@font-face lookup here (kept to
+                 * `instruction.font`'s standard-14 fallback only) — a
+                 * deliberate scope trim, not a technical limitation.
+                 */
+                const chars = Array.from(instruction.text);
+                const charWidths = chars.map((ch) =>
+                    measureText(ch, instruction.font, instruction.fontSize),
+                );
+                const totalAdvance =
+                    charWidths.reduce((sum, w) => sum + w, 0) +
+                    instruction.letterSpacing * chars.length +
+                    instruction.wordSpacing * chars.filter((ch) => ch === ' ').length;
+                const anchorShift =
+                    instruction.textAnchor === 'middle'
+                        ? -totalAdvance / 2
+                        : instruction.textAnchor === 'end'
+                          ? -totalAdvance
+                          : 0;
+                let dist = instruction.startDistance + anchorShift;
+                for (let i = 0; i < chars.length; i++) {
+                    const ch = chars[i];
+                    const charWidth = charWidths[i];
+                    const point = pointAtLength(instruction.points, instruction.cumLengths, dist);
+                    if (point) {
+                        /*
+                         * Same Y-flip reasoning as 'text' above, applied to
+                         * both position and angle: this bracket's FLIP_Y
+                         * mirrors whatever's drawn inside it, so a tangent
+                         * angle computed in the un-flipped local space (`atan2`
+                         * in Y-down coordinates) has to be negated here to
+                         * still point the right way once mirrored back.
+                         */
+                        page.drawOperators([ops.pushGraphicsState(), concat(FLIP_Y)]);
+                        page.drawText(ch, {
+                            x: point.x,
+                            y: -point.y,
+                            rotate: { angle: -(point.angle * 180) / Math.PI },
+                            font: instruction.font,
+                            size: instruction.fontSize,
+                            color: toPdfColor(instruction.fill),
+                            opacity: instruction.fillOpacity,
+                        });
+                        page.drawOperators([ops.popGraphicsState()]);
+                    }
+                    dist +=
+                        charWidth +
+                        instruction.letterSpacing +
+                        (ch === ' ' ? instruction.wordSpacing : 0);
+                }
                 break;
             }
             case 'image': {
@@ -538,6 +717,10 @@ export const embedSvgInPdf = async (
                     imgY = instruction.y + (instruction.height - imgHeight) / 2;
                 }
 
+                if (openLink) {
+                    includeLinkBBox({ x: imgX, y: imgY, width: imgWidth, height: imgHeight });
+                }
+
                 // Same Y-flip reasoning as 'text' above: an image XObject's pixel data has a fixed "top row is up" orientation, unlike a filled path.
                 page.drawOperators([ops.pushGraphicsState(), concat(FLIP_Y)]);
                 page.drawImage(pdfImage, {
@@ -580,6 +763,8 @@ export const embedSvgInPdf = async (
             }
         }
     }
+    // Defensive only — a well-formed instruction stream always closes every `linkStart` with a `linkEnd` before the loop ends.
+    flushLink();
 
     page.drawOperators([ops.popGraphicsState()]);
 

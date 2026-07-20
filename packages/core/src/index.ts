@@ -20,6 +20,7 @@ export type {
     ImageInstruction,
     LineCap,
     LineJoin,
+    LinkStartInstruction,
     MarkerDef,
     MarkerInstruction,
     Paint,
@@ -35,6 +36,8 @@ export type {
     SvgInstruction,
     TextAnchor,
     TextInstruction,
+    TextPathInstruction,
+    TextTransform,
 } from './types';
 
 export {
@@ -75,6 +78,14 @@ export {
     type NormalizedPathSegment,
     normalizePathData,
 } from './geometry/bbox';
+
+export {
+    computeCumulativeLengths,
+    flattenPathToPolyline,
+    type PathPoint,
+    pointAtLength,
+    type PointOnPath,
+} from './geometry/pathLength';
 
 export { parseSvgColor, type RgbColor } from './style/color';
 

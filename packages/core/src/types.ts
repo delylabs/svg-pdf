@@ -86,6 +86,8 @@ export type Paint = RgbColor | GradientPaintRef | PatternPaintRef | null;
 
 export type TextAnchor = 'start' | 'middle' | 'end';
 
+export type TextTransform = 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+
 /*
  * PDF's 14 built-in fonts — the only ones <text> support draws with (see the
  * `<text>` section below for why: no font embedding/matching subsystem).
@@ -121,6 +123,17 @@ export interface ShapePaint {
     readonly fontWeight: string;
     readonly fontStyle: string;
     readonly textAnchor: TextAnchor;
+    // Applied to a run's text content itself (before it becomes a TextInstruction), not carried into drawing — see `applyTextTransform` in style/paint.ts.
+    readonly textTransform: TextTransform;
+    readonly letterSpacing: number;
+    readonly wordSpacing: number;
+    /*
+     * From `xml:space="preserve"` (checked directly on each element, not
+     * via `readPresentation`/CSS — it's an XML attribute, not a stylable
+     * property) or CSS `white-space: pre`. When true, `collectDirectText`
+     * skips its usual whitespace-collapsing.
+     */
+    readonly preserveWhitespace: boolean;
 }
 
 export interface ShapeInstruction extends ShapePaint {
@@ -174,6 +187,16 @@ export interface TextInstruction {
     readonly fillOpacity: number;
     readonly textAnchor: TextAnchor;
     /*
+     * Extra spacing (in points, already resolved from any `em`/`normal`
+     * source unit) added after every character (`letterSpacing`) or after
+     * every literal space character (`wordSpacing`) — passed straight
+     * through to PDF's own `Tc`/`Tw` text-state operators in svgEmbed.ts,
+     * so measurement here must add the exact same amount those operators
+     * will add at draw time (see `textWidths` in svgEmbed.ts).
+     */
+    readonly letterSpacing: number;
+    readonly wordSpacing: number;
+    /*
      * True for a <tspan> with no `x` of its own that isn't the first run in
      * its sequence — it should start exactly where the previous sibling's
      * rendered text ended, not at `x` above (which is just a same-position
@@ -190,6 +213,39 @@ export interface TextInstruction {
      * spec even though the x-cursor still isn't reset.
      */
     readonly startsNewChunk: boolean;
+}
+
+/*
+ * Text drawn along a `<textPath href="#id">`'s referenced `<path>` — kept
+ * as its own instruction type rather than reusing `TextInstruction`
+ * because per-character placement/rotation along a curve is fundamentally
+ * different from a single positioned string, and (like the anchor-chunk
+ * pre-pass and `<a>` link bboxing) genuinely needs `measureText`, which
+ * this module deliberately never touches — so this instruction carries
+ * everything svgEmbed.ts needs (already-flattened path geometry, already-
+ * resolved start distance) to do that character-by-character walk itself.
+ * `textLength`/`lengthAdjust` (glyph-spacing to fit an exact length) and
+ * nested `<tspan>` children inside a `<textPath>` are out of scope — only
+ * the `<textPath>` element's own direct text content is used.
+ */
+export interface TextPathInstruction {
+    readonly type: 'textPath';
+    readonly text: string;
+    // Flattened polyline approximation of the referenced <path>'s `d`, and its cumulative per-point length — see `geometry/pathLength.ts`.
+    readonly points: readonly { readonly x: number; readonly y: number }[];
+    readonly cumLengths: readonly number[];
+    // Already resolved from `startOffset` (px or %) and the referenced path's own `pathLength` rescaling, if any — an absolute distance along `points`/`cumLengths`' units.
+    readonly startDistance: number;
+    readonly fontSize: number;
+    readonly font: StandardFontName;
+    readonly fontFamily: string;
+    readonly fontWeight: string;
+    readonly fontStyle: string;
+    readonly fill: RgbColor;
+    readonly fillOpacity: number;
+    readonly textAnchor: TextAnchor;
+    readonly letterSpacing: number;
+    readonly wordSpacing: number;
 }
 
 /*
@@ -235,6 +291,23 @@ export interface MarkerInstruction {
     readonly scale: number;
 }
 
+/*
+ * Brackets an `<a href="...">`'s subtree, same shape as pushMatrix/popMatrix
+ * — everything drawn between a `linkStart`/`linkEnd` pair should become one
+ * clickable region in the output PDF. Not resolved into a single rect here:
+ * an adapter needs its own drawing-time coordinate math (accumulating each
+ * inner shape/text/image's rendered extent under the ambient transform) to
+ * turn this into a PDF link annotation, the same reason gradients need
+ * `ShapeInstruction.groupMatrix` rather than a plain absolute box — so this
+ * stays a bracket instead of a precomputed rect. A `href="#fragment"` (no
+ * cross-page target makes sense for a single-page-per-SVG PDF) never
+ * produces this instruction at all — see `walk.ts`.
+ */
+export interface LinkStartInstruction {
+    readonly type: 'linkStart';
+    readonly href: string;
+}
+
 export type SvgInstruction =
     | { readonly type: 'pushMatrix'; readonly matrix: Matrix2D }
     | { readonly type: 'popMatrix' }
@@ -242,8 +315,11 @@ export type SvgInstruction =
     | { readonly type: 'popClip' }
     | ShapeInstruction
     | TextInstruction
+    | TextPathInstruction
     | ImageInstruction
-    | MarkerInstruction;
+    | MarkerInstruction
+    | LinkStartInstruction
+    | { readonly type: 'linkEnd' };
 
 /*
  * A resolved <pattern>'s tile geometry plus its content, already walked into

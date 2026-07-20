@@ -1,0 +1,16 @@
+<svg viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg">
+  <path id="arc1" d="M20,80 Q200,20 380,80" fill="none" stroke="lightgray"/>
+  <text font-size="20" fill="crimson">
+    <textPath href="#arc1" text-anchor="start">Start of arc</textPath>
+  </text>
+
+  <path id="arc2" d="M20,150 Q200,90 380,150" fill="none" stroke="lightgray"/>
+  <text font-size="20" fill="seagreen">
+    <textPath href="#arc2" startOffset="50%" text-anchor="middle">Middle of arc</textPath>
+  </text>
+
+  <path id="arc3" d="M20,220 Q200,160 380,220" fill="none" stroke="lightgray"/>
+  <text font-size="20" fill="darkorange">
+    <textPath href="#arc3" startOffset="100%" text-anchor="end">End of arc</textPath>
+  </text>
+</svg>

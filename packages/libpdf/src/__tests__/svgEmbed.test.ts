@@ -561,6 +561,23 @@ describe('embedSvgInPdf', () => {
             expect(Number(secondLineX![1])).toBeCloseTo(10, 5);
         });
 
+        it('flows bare text around a nested <tspan> instead of drawing both at the same x (the anchor-links.svg overlap regression)', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 200 100"><text x="10" y="20">A <tspan>B</tspan> C</text></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            const xs = [...content.matchAll(/1 0 0 1 (-?[\d.]+) -20 Tm/g)].map((m) => Number(m[1]));
+            expect(xs).toHaveLength(3);
+            const aWidth = measureText('A ', 'Helvetica', 16);
+            const bWidth = measureText('B', 'Helvetica', 16);
+            expect(xs[0]).toBeCloseTo(10, 5);
+            expect(xs[1]).toBeCloseTo(10 + aWidth, 5);
+            expect(xs[2]).toBeCloseTo(10 + aWidth + bWidth, 5);
+        });
+
         it('applies text-anchor once to a whole multi-tspan chunk (by total width), not separately per run', async () => {
             const doc = LibPDF.create();
             await embedSvgInPdf(doc, {
@@ -576,8 +593,8 @@ describe('embedSvgInPdf', () => {
             const helloWidth = measureText('Hello', 'Helvetica', 16);
             const worldWidth = measureText('World', 'Helvetica', 16);
             const chunkOffset = -(helloWidth + worldWidth) / 2;
-            // Both runs shift by the same offset (from the chunk's combined width) — not
-            // each centered around its own width, which would put a gap in the middle.
+            /* Both runs shift by the same offset (from the chunk's combined width) — not
+             * each centered around its own width, which would put a gap in the middle. */
             expect(matches[0]).toBeCloseTo(50 + chunkOffset, 5);
             expect(matches[1]).toBeCloseTo(50 + chunkOffset + helloWidth, 5);
         });
@@ -598,11 +615,13 @@ describe('embedSvgInPdf', () => {
             const worldWidth = measureText('World', 'Helvetica', 16);
             // First run: its own one-run chunk, centered on x=50 as usual.
             expect(Number(firstLine![1])).toBeCloseTo(50 - hiWidth / 2, 5);
-            // Second run: a *new* anchor chunk (own y), so it's centered using only its
-            // own width — but the x-cursor isn't reset by y alone, so its unanchored
-            // start is still "Hi"'s *unshifted* end (x=50 + hiWidth, before any anchor
-            // offset — the cursor tracks natural flow, not the anchored draw position),
-            // per spec (only x/dx affect the run cursor).
+            /*
+             * Second run: a *new* anchor chunk (own y), so it's centered using only its
+             * own width — but the x-cursor isn't reset by y alone, so its unanchored
+             * start is still "Hi"'s *unshifted* end (x=50 + hiWidth, before any anchor
+             * offset — the cursor tracks natural flow, not the anchored draw position),
+             * per spec (only x/dx affect the run cursor).
+             */
             expect(Number(secondLine![1])).toBeCloseTo(50 + hiWidth - worldWidth / 2, 5);
         });
 
@@ -726,6 +745,139 @@ describe('embedSvgInPdf', () => {
             const content = getPageContentText(doc, 0);
             expect(content).toMatch(/Tj/);
         });
+
+        it('emits a Tc operator for letter-spacing, ahead of the Tj it applies to', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100"><text x="10" y="20" letter-spacing="2">Hi</text></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            expect(content).toMatch(/2 Tc[\s\S]*Tj/);
+        });
+
+        it('emits a Tw operator for word-spacing', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100"><text x="10" y="20" word-spacing="3">A B</text></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            expect(content).toMatch(/3 Tw[\s\S]*Tj/);
+        });
+
+        it('does not emit Tc/Tw when letter-spacing/word-spacing are unset (default)', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText: '<svg viewBox="0 0 100 100"><text x="10" y="20">Hi</text></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            expect(content).not.toMatch(/\bTc\b/);
+            expect(content).not.toMatch(/\bTw\b/);
+        });
+
+        it('includes letter-spacing in the measured width used for text-anchor centering', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100"><text x="50" y="20" text-anchor="middle" letter-spacing="3">Hi</text></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            const match = content.match(/1 0 0 1 (-?[\d.]+) -20 Tm/);
+            expect(match).not.toBeNull();
+            const baseWidth = measureText('Hi', 'Helvetica', 16);
+            const expectedWidth = baseWidth + 3 * 'Hi'.length;
+            expect(Number(match![1])).toBeCloseTo(50 - expectedWidth / 2, 5);
+        });
+    });
+
+    describe('textPath', () => {
+        it('draws one Tj per character, each at its own x position along a horizontal path', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 1000 100"><path id="p" d="M0 5 L1000 5"/><text><textPath href="#p" startOffset="10">AB</textPath></text></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            const tjCount = (content.match(/Tj/g) ?? []).length;
+            expect(tjCount).toBe(2);
+            const matches = [...content.matchAll(/1 0 0 1 (-?[\d.]+) (-?[\d.]+) Tm/g)];
+            expect(matches).toHaveLength(2);
+            const widthA = measureText('A', 'Helvetica', 16);
+            expect(Number(matches[0][1])).toBeCloseTo(10, 5);
+            expect(Number(matches[0][2])).toBeCloseTo(-5, 5);
+            expect(Number(matches[1][1])).toBeCloseTo(10 + widthA, 5);
+            expect(Number(matches[1][2])).toBeCloseTo(-5, 5);
+        });
+
+        it('rotates a character to match a non-horizontal path tangent', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 200"><path id="p" d="M50 0 L50 200"/><text><textPath href="#p">A</textPath></text></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            // A vertical (Y-down) path segment: local tangent angle is +90°, negated for the FLIP_Y bracket to -90° (cos 0, sin -1).
+            expect(content).toMatch(/6\.123\d*e-17 -1 1 6\.123\d*e-17 0 0 cm|0 -1 1 0 0 0 cm/);
+        });
+
+        it('shifts the start distance back by half the total advance for text-anchor="middle"', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 1000 100"><path id="p" d="M0 5 L1000 5"/><text><textPath href="#p" startOffset="100" text-anchor="middle">AB</textPath></text></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            const matches = [...content.matchAll(/1 0 0 1 (-?[\d.]+) -5 Tm/g)];
+            expect(matches).toHaveLength(2);
+            const widthA = measureText('A', 'Helvetica', 16);
+            const widthB = measureText('B', 'Helvetica', 16);
+            const totalAdvance = widthA + widthB;
+            expect(Number(matches[0][1])).toBeCloseTo(100 - totalAdvance / 2, 5);
+        });
+
+        it('resolves a percentage startOffset relative to the path length', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 1000 100"><path id="p" d="M0 5 L1000 5"/><text><textPath href="#p" startOffset="50%">A</textPath></text></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            const match = content.match(/1 0 0 1 (-?[\d.]+) -5 Tm/);
+            expect(match).not.toBeNull();
+            expect(Number(match![1])).toBeCloseTo(500, 5);
+        });
+
+        it('stops drawing characters that would fall past the end of the path', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 50 100"><path id="p" d="M0 5 L20 5"/><text><textPath href="#p">Hello World</textPath></text></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            const tjCount = (content.match(/Tj/g) ?? []).length;
+            expect(tjCount).toBeGreaterThan(0);
+            expect(tjCount).toBeLessThan('Hello World'.length);
+        });
+
+        it('warns and skips when href points at a missing path', async () => {
+            const doc = LibPDF.create();
+            const result = await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100"><text><textPath href="#missing">Curved</textPath></text></svg>',
+                rotation: 0,
+            });
+            expect(result.warnings.some((w) => w.includes('valid href to a <path>'))).toBe(true);
+        });
     });
 
     describe('image', () => {
@@ -833,6 +985,122 @@ describe('embedSvgInPdf', () => {
                 fetchImage,
             });
             expect(fetchImage).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('<a href> link annotations', () => {
+        it('adds a clickable link annotation sized to the wrapped shape, in page space', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100"><a href="https://example.com"><rect x="10" y="20" width="30" height="40"/></a></svg>',
+                rotation: 0,
+            });
+            const links = doc.getPages()[0].getLinkAnnotations();
+            expect(links).toHaveLength(1);
+            expect(links[0].uri).toBe('https://example.com');
+            // viewBox (0,0,100,100) maps 1:1 onto a 100x100 page, Y-flipped: local y=20..60 becomes page y=40..80.
+            expect(links[0].rect.x).toBeCloseTo(10);
+            expect(links[0].rect.width).toBeCloseTo(30);
+            expect(links[0].rect.y).toBeCloseTo(40);
+            expect(links[0].rect.height).toBeCloseTo(40);
+        });
+
+        it('does not add a link annotation for an <a> without an href', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText: '<svg viewBox="0 0 100 100"><a><rect width="10" height="10"/></a></svg>',
+                rotation: 0,
+            });
+            expect(doc.getPages()[0].getLinkAnnotations()).toHaveLength(0);
+        });
+
+        it('does not add a link annotation for an <a> wrapping no drawable content', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText: '<svg viewBox="0 0 100 100"><a href="https://example.com"></a></svg>',
+                rotation: 0,
+            });
+            expect(doc.getPages()[0].getLinkAnnotations()).toHaveLength(0);
+        });
+
+        it('unions the bboxes of every shape/text/image wrapped in the same <a>', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100"><a href="https://example.com"><rect x="10" y="10" width="10" height="10"/><rect x="60" y="60" width="10" height="10"/></a></svg>',
+                rotation: 0,
+            });
+            const links = doc.getPages()[0].getLinkAnnotations();
+            expect(links).toHaveLength(1);
+            // Union of (10,10)-(20,20) and (60,60)-(70,70) in local space, y-flipped onto the page.
+            expect(links[0].rect.x).toBeCloseTo(10);
+            expect(links[0].rect.width).toBeCloseTo(60);
+            expect(links[0].rect.y).toBeCloseTo(30);
+            expect(links[0].rect.height).toBeCloseTo(60);
+        });
+
+        it('includes an invisible (fill="none") shape in the link area — a common clickable-overlay pattern', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100"><a href="https://example.com"><rect x="10" y="10" width="20" height="20" fill="none"/></a></svg>',
+                rotation: 0,
+            });
+            const links = doc.getPages()[0].getLinkAnnotations();
+            expect(links).toHaveLength(1);
+            expect(links[0].rect.width).toBeCloseTo(20);
+            expect(links[0].rect.height).toBeCloseTo(20);
+        });
+
+        it('warns and skips an internal fragment href, drawing the content without a link', async () => {
+            const doc = LibPDF.create();
+            const result = await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100"><a href="#somewhere"><rect width="10" height="10"/></a></svg>',
+                rotation: 0,
+            });
+            expect(doc.getPages()[0].getLinkAnnotations()).toHaveLength(0);
+            expect(result.warnings.some((w) => w.includes('fragment'))).toBe(true);
+            const content = getPageContentText(doc, 0);
+            expect(content).toMatch(/\bf\b/);
+        });
+
+        it('positions the link correctly under a nested transform', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100"><g transform="translate(20,0)"><a href="https://example.com"><rect x="0" y="0" width="10" height="10"/></a></g></svg>',
+                rotation: 0,
+            });
+            const links = doc.getPages()[0].getLinkAnnotations();
+            expect(links).toHaveLength(1);
+            expect(links[0].rect.x).toBeCloseTo(20);
+            expect(links[0].rect.width).toBeCloseTo(10);
+        });
+
+        it('adds a link annotation for an <a> nested directly inside <text> (a link on bare text)', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100"><text x="10" y="20"><a href="https://example.com">Click</a></text></svg>',
+                rotation: 0,
+            });
+            const links = doc.getPages()[0].getLinkAnnotations();
+            expect(links).toHaveLength(1);
+            expect(links[0].uri).toBe('https://example.com');
+        });
+
+        it('adds a link annotation for an <a> nested inside a <tspan>', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100"><text x="10" y="20">A <tspan><a href="https://example.com">link</a></tspan></text></svg>',
+                rotation: 0,
+            });
+            const links = doc.getPages()[0].getLinkAnnotations();
+            expect(links).toHaveLength(1);
+            expect(links[0].uri).toBe('https://example.com');
         });
     });
 });
