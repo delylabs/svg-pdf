@@ -19,7 +19,9 @@ import {
     type WalkContext,
 } from './walk';
 
-const FALLBACK_SIZE = 100;
+// CSS's default size for a replaced element (which an <svg> with no width/height/viewBox is treated as) when nothing else constrains it.
+const FALLBACK_WIDTH = 300;
+const FALLBACK_HEIGHT = 150;
 
 // CSS unit -> points (1pt = 1/72in). Unitless/`px` is deliberately left at a 1:1 factor — not CSS-spec-accurate (real px is 1/96in), but changing it now would resize every already-correct unitless icon SVG this codec has ever handled, for a discrepancy nobody has reported.
 const UNIT_TO_POINTS: Record<string, number> = {
@@ -50,8 +52,8 @@ const stripUnit = (value: string | null): number | null => {
  * `mm`/`cm`/`in` converted), its separate internal coordinate-system extent
  * (`viewBoxWidth`/`viewBoxHeight`), and the viewBox origin. When only one of
  * `viewBox`/`width`+`height` is present, the other is derived from it; with
- * neither, falls back to a 100x100 square (matches the browser's own SVG
- * default when both are absent).
+ * neither, falls back to 300x150 (the browser's own default replaced-element
+ * size when both are absent).
  */
 export const resolveSvgSize = (root: Element): ParsedSvgSize => {
     const viewBoxAttr = root.getAttribute('viewBox');
@@ -69,8 +71,8 @@ export const resolveSvgSize = (root: Element): ParsedSvgSize => {
     const explicitWidth = stripUnit(root.getAttribute('width'));
     const explicitHeight = stripUnit(root.getAttribute('height'));
 
-    const width = explicitWidth ?? viewBox?.width ?? FALLBACK_SIZE;
-    const height = explicitHeight ?? viewBox?.height ?? FALLBACK_SIZE;
+    const width = explicitWidth ?? viewBox?.width ?? FALLBACK_WIDTH;
+    const height = explicitHeight ?? viewBox?.height ?? FALLBACK_HEIGHT;
 
     return {
         width,
@@ -79,6 +81,7 @@ export const resolveSvgSize = (root: Element): ParsedSvgSize => {
         viewBoxMinY: viewBox?.minY ?? 0,
         viewBoxWidth: viewBox?.width ?? width,
         viewBoxHeight: viewBox?.height ?? height,
+        preserveAspectRatio: root.getAttribute('preserveAspectRatio'),
     };
 };
 

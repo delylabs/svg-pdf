@@ -28,6 +28,8 @@ export interface ParsedSvgSize {
      */
     readonly viewBoxWidth: number;
     readonly viewBoxHeight: number;
+    // The root <svg>'s own raw `preserveAspectRatio` attribute (unparsed — svgEmbed.ts feeds it straight into `computeViewBoxTransform`), or `null` if absent (defaults to "xMidYMid meet").
+    readonly preserveAspectRatio: string | null;
 }
 
 // --- Tree walking → drawing instructions ---------------------------------

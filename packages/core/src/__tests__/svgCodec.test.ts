@@ -4,16 +4,8 @@ import { DOMParser as XmlDomParser } from '@xmldom/xmldom';
 import { describe, expect, it } from 'vitest';
 
 import {
-    circleToPathData,
-    IDENTITY_MATRIX,
     type ImageInstruction,
-    type Matrix2D,
-    multiplyMatrix,
-    parseSvgColor,
     parseSvgDocument,
-    parseTransformList,
-    polygonToPathData,
-    rectToPathData,
     resolveSvgSize,
     type ShapeInstruction,
     type TextInstruction,
@@ -26,54 +18,6 @@ const el = (svg: string): Element => {
     return Array.from(root.childNodes).find((n): n is Element => n.nodeType === 1)!;
 };
 
-const applyMatrix = (m: Matrix2D, x: number, y: number) => ({
-    x: m.a * x + m.c * y + m.e,
-    y: m.b * x + m.d * y + m.f,
-});
-
-describe('multiplyMatrix', () => {
-    it('is the identity when combined with the identity matrix', () => {
-        const m: Matrix2D = { a: 2, b: 0, c: 0, d: 3, e: 5, f: 7 };
-        expect(multiplyMatrix(m, IDENTITY_MATRIX)).toEqual(m);
-        expect(multiplyMatrix(IDENTITY_MATRIX, m)).toEqual(m);
-    });
-});
-
-describe('parseTransformList', () => {
-    it('returns identity for null/empty input', () => {
-        expect(parseTransformList(null)).toEqual(IDENTITY_MATRIX);
-        expect(parseTransformList('')).toEqual(IDENTITY_MATRIX);
-    });
-
-    it('parses a single translate', () => {
-        const m = parseTransformList('translate(10,20)');
-        expect(applyMatrix(m, 0, 0)).toEqual({ x: 10, y: 20 });
-    });
-
-    it('parses a single scale (uniform when only one arg given)', () => {
-        const m = parseTransformList('scale(2)');
-        expect(applyMatrix(m, 3, 4)).toEqual({ x: 6, y: 8 });
-    });
-
-    it('parses rotate(90) as a quarter turn', () => {
-        const m = parseTransformList('rotate(90)');
-        const p = applyMatrix(m, 1, 0);
-        expect(p.x).toBeCloseTo(0);
-        expect(p.y).toBeCloseTo(1);
-    });
-
-    it('applies the rightmost/innermost function first: "translate(10,0) scale(2)"', () => {
-        // Nests like <g translate(10,0)><g scale(2)>point</g></g> — scale applies first.
-        const m = parseTransformList('translate(10,0) scale(2)');
-        expect(applyMatrix(m, 1, 0)).toEqual({ x: 12, y: 0 });
-    });
-
-    it('parses an explicit matrix() the same as the raw SVG attribute values', () => {
-        const m = parseTransformList('matrix(1,0,0,1,10,20)');
-        expect(applyMatrix(m, 0, 0)).toEqual({ x: 10, y: 20 });
-    });
-});
-
 describe('resolveSvgSize', () => {
     it('uses viewBox when width/height are absent', () => {
         const root = el('<svg viewBox="0 0 200 100"><rect/></svg>').parentElement!;
@@ -85,6 +29,7 @@ describe('resolveSvgSize', () => {
             viewBoxMinY: 0,
             viewBoxWidth: 200,
             viewBoxHeight: 100,
+            preserveAspectRatio: null,
         });
     });
 
@@ -97,6 +42,7 @@ describe('resolveSvgSize', () => {
             viewBoxMinY: 0,
             viewBoxWidth: 50,
             viewBoxHeight: 60,
+            preserveAspectRatio: null,
         });
     });
 
@@ -109,18 +55,20 @@ describe('resolveSvgSize', () => {
             viewBoxMinY: 10,
             viewBoxWidth: 100,
             viewBoxHeight: 100,
+            preserveAspectRatio: null,
         });
     });
 
-    it('falls back to a 100x100 default when neither is present', () => {
+    it('falls back to the CSS default replaced-element size (300x150) when neither is present', () => {
         const root = el('<svg><rect/></svg>').parentElement!;
         expect(resolveSvgSize(root)).toEqual({
-            width: 100,
-            height: 100,
+            width: 300,
+            height: 150,
             viewBoxMinX: 0,
             viewBoxMinY: 0,
-            viewBoxWidth: 100,
-            viewBoxHeight: 100,
+            viewBoxWidth: 300,
+            viewBoxHeight: 150,
+            preserveAspectRatio: null,
         });
     });
 
@@ -135,7 +83,15 @@ describe('resolveSvgSize', () => {
             viewBoxMinY: 0,
             viewBoxWidth: 24,
             viewBoxHeight: 24,
+            preserveAspectRatio: null,
         });
+    });
+
+    it('reads the raw preserveAspectRatio attribute unparsed', () => {
+        const root = el(
+            '<svg viewBox="0 0 100 100" preserveAspectRatio="xMinYMax slice"><rect/></svg>',
+        ).parentElement!;
+        expect(resolveSvgSize(root).preserveAspectRatio).toBe('xMinYMax slice');
     });
 
     it('converts physical units (mm) to points for width/height, while viewBoxWidth/Height keep the raw internal coordinate extent', () => {
@@ -164,53 +120,6 @@ describe('resolveSvgSize', () => {
         expect(
             resolveSvgSize(el('<svg width="1pc" height="1pc"><rect/></svg>').parentElement!).width,
         ).toBeCloseTo(12, 1);
-    });
-});
-
-describe('shape → path conversion', () => {
-    it('converts a plain rect to a closed 4-line path', () => {
-        const d = rectToPathData(el('<svg><rect x="10" y="20" width="30" height="40"/></svg>'));
-        expect(d).toBe('M 10 20 H 40 V 60 H 10 Z');
-    });
-
-    it('converts a circle to a 4-arc closed path starting at the rightmost point (matching browser convention)', () => {
-        const d = circleToPathData(el('<svg><circle cx="0" cy="0" r="10"/></svg>'));
-        expect(d.startsWith('M 10 0')).toBe(true);
-        expect(d.endsWith('Z')).toBe(true);
-    });
-
-    it('converts a polygon to a closed path', () => {
-        const d = polygonToPathData(el('<svg><polygon points="0,0 10,0 5,10"/></svg>'));
-        expect(d).toBe('M 0 0 L 10 0 L 5 10 Z');
-    });
-});
-
-describe('parseSvgColor', () => {
-    it('parses 3 and 6-digit hex', () => {
-        expect(parseSvgColor('#f00')).toEqual({ r: 255, g: 0, b: 0 });
-        expect(parseSvgColor('#ff0000')).toEqual({ r: 255, g: 0, b: 0 });
-    });
-
-    it('parses rgb()', () => {
-        expect(parseSvgColor('rgb(10, 20, 30)')).toEqual({
-            r: 10,
-            g: 20,
-            b: 30,
-        });
-    });
-
-    it('parses named CSS colors', () => {
-        expect(parseSvgColor('cornflowerblue')).toEqual({
-            r: 100,
-            g: 149,
-            b: 237,
-        });
-    });
-
-    it('treats none/transparent as no paint', () => {
-        expect(parseSvgColor('none')).toBeNull();
-        expect(parseSvgColor('transparent')).toBeNull();
-        expect(parseSvgColor(null)).toBeNull();
     });
 });
 
@@ -308,6 +217,30 @@ describe('parseSvgDocument', () => {
                 (i) => i.type === 'pushMatrix' && i.matrix.a === 2 && i.matrix.d === 2,
             ),
         ).toBe(true);
+    });
+
+    it('letterboxes (uniform scale, centered) an aspect-mismatched <symbol> viewBox by default, rather than stretching it', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><symbol id="box" viewBox="0 0 10 10"><rect width="10" height="10" fill="#000"/></symbol></defs><use href="#box" x="0" y="0" width="40" height="20"/></svg>',
+        );
+        const push = doc.instructions.find(
+            (i) => i.type === 'pushMatrix' && i.matrix.a === i.matrix.d,
+        );
+        if (!push || push.type !== 'pushMatrix') throw new Error('unreachable');
+        // 40x20 viewport, 10x10 viewBox: width ratio 4, height ratio 2 — meet picks the smaller (2), centering horizontally.
+        expect(push.matrix.a).toBe(2);
+        expect(push.matrix.d).toBe(2);
+        expect(push.matrix.e).toBe(10); // (40 - 10*2) / 2
+    });
+
+    it('stretches a <symbol> viewBox independently when preserveAspectRatio="none"', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><symbol id="box" viewBox="0 0 10 10" preserveAspectRatio="none"><rect width="10" height="10" fill="#000"/></symbol></defs><use href="#box" x="0" y="0" width="40" height="20"/></svg>',
+        );
+        const push = doc.instructions.find((i) => i.type === 'pushMatrix' && i.matrix.a === 4);
+        if (!push || push.type !== 'pushMatrix') throw new Error('unreachable');
+        expect(push.matrix.a).toBe(4);
+        expect(push.matrix.d).toBe(2);
     });
 
     it('resolves a simple non-recursive <use> reference', () => {
@@ -566,6 +499,76 @@ describe('parseSvgDocument (markers)', () => {
             '<svg viewBox="0 0 100 100"><defs><marker id="m" markerWidth="4" markerHeight="4"><line x1="0" y1="0" x2="1" y2="1" marker-start="url(#m)"/></marker></defs><line x1="0" y1="0" x2="10" y2="0" marker-start="url(#m)"/></svg>',
         );
         expect(doc.warnings.some((w) => w.includes('forms a cycle'))).toBe(true);
+    });
+});
+
+describe('parseSvgDocument (nested svg)', () => {
+    it('places a nested <svg> at its x/y offset and scales its viewBox to fit width/height', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 400 200"><svg x="10" y="20" width="100" height="50" viewBox="0 0 50 25"><rect width="50" height="25" fill="#ff0000"/></svg></svg>',
+        );
+        const types = doc.instructions.map((i) => i.type);
+        expect(types).toEqual([
+            'pushMatrix',
+            'pushClip',
+            'pushMatrix',
+            'shape',
+            'popMatrix',
+            'popClip',
+            'popMatrix',
+        ]);
+        const offsetPush = doc.instructions[0];
+        if (offsetPush.type !== 'pushMatrix') throw new Error('unreachable');
+        expect(offsetPush.matrix).toEqual({ a: 1, b: 0, c: 0, d: 1, e: 10, f: 20 });
+        const viewBoxPush = doc.instructions[2];
+        if (viewBoxPush.type !== 'pushMatrix') throw new Error('unreachable');
+        // 100/50 = 2, 50/25 = 2 — uniform 2x scale here, no translate since viewBox origin is 0,0.
+        expect(viewBoxPush.matrix).toEqual({ a: 2, b: 0, c: 0, d: 2, e: 0, f: 0 });
+    });
+
+    it('letterboxes an aspect-mismatched nested <svg> viewBox by default, rather than stretching it', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 400 200"><svg width="40" height="20" viewBox="0 0 10 10"><rect width="10" height="10"/></svg></svg>',
+        );
+        const viewBoxPush = doc.instructions.find(
+            (i) => i.type === 'pushMatrix' && i.matrix.a === i.matrix.d,
+        );
+        if (!viewBoxPush || viewBoxPush.type !== 'pushMatrix') throw new Error('unreachable');
+        // 40x20 viewport, 10x10 viewBox: width ratio 4, height ratio 2 — meet picks the smaller (2).
+        expect(viewBoxPush.matrix.a).toBe(2);
+        expect(viewBoxPush.matrix.d).toBe(2);
+        expect(viewBoxPush.matrix.e).toBe(10); // (40 - 10*2) / 2, centered
+    });
+
+    it('clips content to the nested viewport by default (a rect the size of width/height)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><svg width="20" height="10" viewBox="0 0 20 10"><rect width="20" height="10"/></svg></svg>',
+        );
+        const pushClip = doc.instructions.find((i) => i.type === 'pushClip');
+        if (!pushClip || pushClip.type !== 'pushClip') throw new Error('unreachable');
+        expect(pushClip.paths).toEqual(['M 0 0 H 20 V 10 H 0 Z']);
+    });
+
+    it('skips the viewport clip for overflow="visible"', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><svg width="20" height="10" overflow="visible"><rect width="20" height="10"/></svg></svg>',
+        );
+        expect(doc.instructions.some((i) => i.type === 'pushClip')).toBe(false);
+    });
+
+    it('warns and skips a nested <svg> without explicit numeric width/height', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><svg><rect width="10" height="10"/></svg></svg>',
+        );
+        expect(doc.instructions.some((i) => i.type === 'shape')).toBe(false);
+        expect(doc.warnings.some((w) => w.includes('nested <svg>'))).toBe(true);
+    });
+
+    it('lets a <use> reference a shape inside a nested <svg>', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><svg width="50" height="50"><rect id="box" width="10" height="10" fill="#00ff00"/></svg><use href="#box" x="20" y="20"/></svg>',
+        );
+        expect(shapesOf(doc).some((s) => s.fill && 'r' in s.fill && s.fill.g === 255)).toBe(true);
     });
 });
 

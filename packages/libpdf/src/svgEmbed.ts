@@ -2,6 +2,7 @@ import { measureText, ops, type PDF as LibPDF, type PDFFormXObject } from '@libp
 
 import {
     type BlendMode,
+    computeViewBoxTransform,
     invertMatrix,
     type MarkerDef,
     type Matrix2D,
@@ -114,6 +115,8 @@ export const embedSvgInPdf = async (
         viewBoxMinX,
         viewBoxMinY,
         viewBoxWidth,
+        viewBoxHeight,
+        preserveAspectRatio,
         instructions,
         warnings,
         gradients,
@@ -147,25 +150,33 @@ export const embedSvgInPdf = async (
     page.drawOperators([ops.pushGraphicsState(), ops.popGraphicsState()]);
 
     /*
-     * Maps viewBox space (Y-down) onto the fitted draw box in PDF space (Y-up):
-     * scale uniformly, negate d to flip Y, then offset so the viewBox's
-     * top-left lands on the draw box's top-left (drawY + drawHeight, since
-     * PDF Y grows up). Divides by `viewBoxWidth` (the coordinate system
-     * shapes/text/images are actually positioned in), not the display
-     * `width` — those two can differ hugely (e.g. `width="297mm"
-     * viewBox="0 0 29700 21000"`); dividing by the wrong one still "runs"
-     * but silently zooms into one corner of the artwork instead of fitting
-     * all of it onto the page.
+     * Maps viewBox space onto the fitted draw box, honoring the root <svg>'s
+     * own `preserveAspectRatio` (default "xMidYMid meet" — uniform scale,
+     * centered, whole viewBox visible) via the same `computeViewBoxTransform`
+     * used for `<use>`-of-`<symbol>` and nested <svg> in core. Divides by
+     * `viewBoxWidth`/`viewBoxHeight` (the coordinate system shapes/text/
+     * images are actually positioned in), not the display `width`/`height`
+     * — those two can differ hugely (e.g. `width="297mm" viewBox="0 0 29700
+     * 21000"`); dividing by the wrong one still "runs" but silently zooms
+     * into one corner of the artwork instead of fitting all of it onto the
+     * page. The result lands in a (0,0)-(drawWidth,drawHeight) local box,
+     * still Y-down like viewBox space — `pageMatrix` then flips Y and
+     * offsets to the draw box's actual position in PDF's Y-up page space.
      */
-    const scale = viewBoxWidth > 0 ? drawWidth / viewBoxWidth : 1;
-    const rootMatrix: Matrix2D = {
-        a: scale,
-        b: 0,
-        c: 0,
-        d: -scale,
-        e: drawX - scale * viewBoxMinX,
-        f: drawY + drawHeight + scale * viewBoxMinY,
-    };
+    const viewBoxToBoxMatrix = computeViewBoxTransform(
+        viewBoxMinX,
+        viewBoxMinY,
+        viewBoxWidth,
+        viewBoxHeight,
+        drawWidth,
+        drawHeight,
+        preserveAspectRatio,
+    );
+    const pageMatrix = multiplyMatrix(
+        scaleMatrix(1, -1),
+        translateMatrix(drawX, drawY + drawHeight),
+    );
+    const rootMatrix: Matrix2D = multiplyMatrix(viewBoxToBoxMatrix, pageMatrix);
 
     page.drawOperators([ops.pushGraphicsState(), concat(rootMatrix)]);
 

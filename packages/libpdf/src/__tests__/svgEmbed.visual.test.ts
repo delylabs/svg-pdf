@@ -20,9 +20,7 @@ const MAX_MISMATCH_RATIO = 0.12;
  * their full source SVG would always fail for a reason unrelated to
  * regressions, so they're excluded here rather than given a fake threshold.
  */
-const KNOWN_UNSUPPORTED_ROOT: Record<string, string> = {
-    'nested-svg-scene.svg': 'nested <svg> is not parsed yet',
-};
+const KNOWN_UNSUPPORTED_ROOT: Record<string, string> = {};
 
 const fixtures = fs
     .readdirSync(FIXTURES_DIR)

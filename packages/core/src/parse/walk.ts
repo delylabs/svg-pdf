@@ -5,10 +5,10 @@ import {
     multiplyMatrix,
     parseFloats,
     parseTransformList,
-    scaleMatrix,
     translateMatrix,
 } from '../geometry/matrix';
 import { computeMarkerVertices, type MarkerVertex } from '../geometry/markerVertices';
+import { computeViewBoxTransform } from '../geometry/viewBox';
 import { computeShapeBBox, num, shapeToPathData } from '../geometry/path';
 import { CSS_NAMED_COLORS, type RgbColor } from '../style/color';
 import { findMarkerContentEl, resolveMarkerAttrs } from '../style/marker';
@@ -69,10 +69,9 @@ const NON_RENDERED_CONTAINERS = new Set([
  * gradient's <stop> children, so descending into them would be wrong anyway).
  */
 const UNSUPPORTED_ELEMENTS = new Set([
-    // 'text'/'tspan'/'image' are handled separately below, not in this skip-and-warn set.
+    // 'text'/'tspan'/'image'/'svg' are handled separately below, not in this skip-and-warn set.
     'foreignobject',
     'filter',
-    'svg', // nested <svg> — only the document root is handled
 ]);
 
 const CONTAINER_ELEMENTS = new Set(['g', 'a', 'switch']);
@@ -530,11 +529,14 @@ export function walkNode(
             const useHeight = el.hasAttribute('height') ? num(el.getAttribute('height')) : null;
             if (viewBoxNumbers?.length === 4 && useWidth && useHeight) {
                 const [vbX, vbY, vbWidth, vbHeight] = viewBoxNumbers;
-                const scaleX = vbWidth > 0 ? useWidth / vbWidth : 1;
-                const scaleY = vbHeight > 0 ? useHeight / vbHeight : 1;
-                symbolMatrix = multiplyMatrix(
-                    translateMatrix(-vbX, -vbY),
-                    scaleMatrix(scaleX, scaleY),
+                symbolMatrix = computeViewBoxTransform(
+                    vbX,
+                    vbY,
+                    vbWidth,
+                    vbHeight,
+                    useWidth,
+                    useHeight,
+                    referenced.getAttribute('preserveAspectRatio'),
                 );
             }
         }
@@ -613,6 +615,78 @@ export function walkNode(
                     opacity: paint.fillOpacity,
                 });
             });
+        });
+        return;
+    }
+
+    /*
+     * A nested <svg> establishes its own viewport (per spec, clipped to it by
+     * default) at (x,y) with size (width,height) in the parent's coordinate
+     * system, optionally with its own viewBox scaled to fit that viewport —
+     * the exact same transform math as `<use>`-of-`<symbol>` above, plus an
+     * explicit x/y offset and a viewport clip instead of relying on the
+     * referencing element's own clip-path.
+     *
+     * Scope limit: width/height must be explicit numbers here. Per spec they
+     * default to 100% of the *parent* viewport when absent, but Plotify
+     * doesn't track a live "current viewport size" for percentage resolution
+     * anywhere else in the codebase (the root <svg>'s own width/height
+     * fallback in `resolveSvgSize` is a one-time computation, not something
+     * threaded through the walk) — so an absent width/height is skipped with
+     * a warning rather than guessed at.
+     */
+    if (tag === 'svg') {
+        const width = el.hasAttribute('width') ? num(el.getAttribute('width')) : null;
+        const height = el.hasAttribute('height') ? num(el.getAttribute('height')) : null;
+        if (width === null || height === null || width <= 0 || height <= 0) {
+            ctx.warnings.push(
+                'nested <svg> without explicit numeric width/height (percentage sizing is not supported) was skipped',
+            );
+            return;
+        }
+        const x = num(el.getAttribute('x'));
+        const y = num(el.getAttribute('y'));
+        const paint = resolvePaint(el, inherited, ctx);
+        const offsetMatrix = multiplyMatrix(translateMatrix(x, y), transform);
+
+        const viewBoxNumbers = el.hasAttribute('viewBox')
+            ? parseFloats(el.getAttribute('viewBox') ?? '')
+            : null;
+        let viewBoxMatrix = IDENTITY_MATRIX;
+        if (viewBoxNumbers?.length === 4) {
+            const [vbX, vbY, vbWidth, vbHeight] = viewBoxNumbers;
+            viewBoxMatrix = computeViewBoxTransform(
+                vbX,
+                vbY,
+                vbWidth,
+                vbHeight,
+                width,
+                height,
+                el.getAttribute('preserveAspectRatio'),
+            );
+        }
+        const overflowVisible = readPresentation(el, 'overflow')?.trim() === 'visible';
+
+        withPush(offsetMatrix, ctx, () => {
+            const clipViewport = !overflowVisible;
+            if (clipViewport) {
+                ctx.instructions.push({
+                    type: 'pushClip',
+                    paths: [`M 0 0 H ${width} V ${height} H 0 Z`],
+                    clipRule: 'nonzero',
+                    bboxMatrix: null,
+                });
+            }
+            withPush(viewBoxMatrix, ctx, () => {
+                const nextAccMatrix = multiplyMatrix(
+                    viewBoxMatrix,
+                    multiplyMatrix(offsetMatrix, accMatrix),
+                );
+                for (const child of Array.from(el.children)) {
+                    walkNode(child, paint, ctx, nextAccMatrix);
+                }
+            });
+            if (clipViewport) ctx.instructions.push({ type: 'popClip' });
         });
         return;
     }

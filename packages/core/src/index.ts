@@ -62,6 +62,14 @@ export {
 export { computeMarkerVertices, type MarkerVertex } from './geometry/markerVertices';
 
 export {
+    computeViewBoxTransform,
+    parsePreserveAspectRatio,
+    type ParsedPreserveAspectRatio,
+    type PreserveAspectRatioAlign,
+    type PreserveAspectRatioMeetOrSlice,
+} from './geometry/viewBox';
+
+export {
     type BBoxRect,
     computePathBBox,
     type NormalizedPathSegment,
