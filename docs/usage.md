@@ -46,6 +46,27 @@ await embedSvgInPdf(doc, {
 });
 ```
 
+## Embedding custom fonts
+
+By default, `<text>` is drawn with one of PDF's 14 standard fonts, matched from the SVG's `font-family`/`font-weight`/`font-style` (e.g. a bold sans-serif family maps to `Helvetica-Bold`) — the SVG's actual requested font is never embedded.
+
+To embed a real font instead, pass a `fetchFont` function. It's called once per distinct `font-family`/`font-weight`/`font-style` combination actually used in the SVG (not per character or per run), and should return the font's raw bytes, or `null` if you have no matching font — which falls back to the standard-14 choice, same as if `fetchFont` weren't passed at all:
+
+```ts
+await embedSvgInPdf(doc, {
+    svgText,
+    rotation: 0,
+    fetchFont: async ({ fontFamily, fontWeight, fontStyle }) => {
+        if (fontFamily === 'Poppins') {
+            return fs.readFileSync('./fonts/Poppins-Regular.ttf');
+        }
+        return null;
+    },
+});
+```
+
+Fonts already embedded inline in the SVG itself (`@font-face { src: url(data:...) }`) aren't read automatically yet — only fonts supplied through `fetchFont` are embedded.
+
 ## Using the parser standalone
 
 `@delylabs/plotify` (the `core` package) can be used on its own via `parseSvgDocument` if you want the parsed instruction list without going through a PDF adapter — see `packages/core/src/index.ts` for its full exports.

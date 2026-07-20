@@ -17,6 +17,12 @@ import { embedSvgInPdf } from '../svgEmbed';
 const ONE_PIXEL_PNG_DATA_URI =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 
+// A real TTF already vendored as a dev dependency (visual-regression tests use the same pdfjs-dist package to rasterize PDFs) — reused here as stand-in "custom font bytes" for fetchFont tests, rather than adding a new font fixture just for this.
+const LIBERATION_SANS_TTF = path.resolve(
+    process.cwd(),
+    'node_modules/pdfjs-dist/standard_fonts/LiberationSans-Regular.ttf',
+);
+
 // Decodes a page's content stream to text for asserting on raw operators.
 const getPageContentText = (doc: ReturnType<typeof LibPDF.create>, pageIndex: number): string => {
     const page = doc.getPages()[pageIndex];
@@ -598,6 +604,82 @@ describe('embedSvgInPdf', () => {
             // offset — the cursor tracks natural flow, not the anchored draw position),
             // per spec (only x/dx affect the run cursor).
             expect(Number(secondLine![1])).toBeCloseTo(50 + hiWidth - worldWidth / 2, 5);
+        });
+
+        it('embeds a custom font via fetchFont and uses its own measured metrics for text-anchor positioning', async () => {
+            const doc = LibPDF.create();
+            const fontBytes = new Uint8Array(fs.readFileSync(LIBERATION_SANS_TTF));
+            const fetchFont = vi.fn(async () => fontBytes);
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100"><text x="50" y="20" text-anchor="middle" font-family="CustomSans">Hi</text></svg>',
+                rotation: 0,
+                fetchFont,
+            });
+            expect(fetchFont).toHaveBeenCalledWith({
+                fontFamily: 'CustomSans',
+                fontWeight: 'normal',
+                fontStyle: 'normal',
+            });
+            const embedded = doc.embedFont(fontBytes);
+            const expectedWidth = measureText('Hi', embedded, 16);
+            const content = getPageContentText(doc, 0);
+            const match = content.match(/1 0 0 1 (-?[\d.]+) -20 Tm/);
+            expect(match).not.toBeNull();
+            expect(Number(match![1])).toBeCloseTo(50 - expectedWidth / 2, 5);
+        });
+
+        it('calls fetchFont only once for repeated runs sharing the same family/weight/style', async () => {
+            const doc = LibPDF.create();
+            const fontBytes = new Uint8Array(fs.readFileSync(LIBERATION_SANS_TTF));
+            const fetchFont = vi.fn(async () => fontBytes);
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100" font-family="CustomSans"><text x="10" y="20">Hello</text><text x="10" y="40">World</text></svg>',
+                rotation: 0,
+                fetchFont,
+            });
+            expect(fetchFont).toHaveBeenCalledTimes(1);
+        });
+
+        it('warns and falls back to a standard font when fetchFont returns null', async () => {
+            const doc = LibPDF.create();
+            const result = await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100"><text x="50" y="20" text-anchor="middle" font-family="Missing">Hi</text></svg>',
+                rotation: 0,
+                fetchFont: async () => null,
+            });
+            expect(result.warnings.some((w) => w.includes('No font was found'))).toBe(true);
+            const content = getPageContentText(doc, 0);
+            const match = content.match(/1 0 0 1 (-?[\d.]+) -20 Tm/);
+            expect(match).not.toBeNull();
+            const expectedWidth = measureText('Hi', 'Helvetica', 16);
+            expect(Number(match![1])).toBeCloseTo(50 - expectedWidth / 2, 5);
+        });
+
+        it('warns and falls back to a standard font (without crashing) when fetchFont throws', async () => {
+            const doc = LibPDF.create();
+            const result = await embedSvgInPdf(doc, {
+                svgText: '<svg viewBox="0 0 100 100"><text x="10" y="20">Hi</text></svg>',
+                rotation: 0,
+                fetchFont: async () => {
+                    throw new Error('font lookup failed');
+                },
+            });
+            expect(result.warnings.some((w) => w.includes('could not be embedded'))).toBe(true);
+            const content = getPageContentText(doc, 0);
+            expect(content).toMatch(/Tj/);
+        });
+
+        it('never calls fetchFont when not provided', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText: '<svg viewBox="0 0 100 100"><text x="10" y="20">Hi</text></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            expect(content).toMatch(/Tj/);
         });
     });
 

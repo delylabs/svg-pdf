@@ -1,4 +1,11 @@
-import { measureText, ops, type PDF as LibPDF, type PDFFormXObject } from '@libpdf/core';
+import {
+    type EmbeddedFont,
+    type FontInput,
+    measureText,
+    ops,
+    type PDF as LibPDF,
+    type PDFFormXObject,
+} from '@libpdf/core';
 
 import {
     type BlendMode,
@@ -58,6 +65,13 @@ export interface EmbedSvgResult {
 
 export type FetchImage = (url: string) => Promise<{ bytes: Uint8Array; mimeType: string } | null>;
 
+// Asked once per distinct (fontFamily, fontWeight, fontStyle) combination actually used in the SVG — never per glyph or per run. Returning `null` (the default, if no matching font is available) falls back to the nearest standard-14 font, same as when no `fetchFont` is supplied at all.
+export type FetchFont = (query: {
+    fontFamily: string;
+    fontWeight: string;
+    fontStyle: string;
+}) => Promise<Uint8Array | null>;
+
 /**
  * Embeds an SVG as a genuine PDF vector graphic (not a rasterized image) —
  * every shape becomes real PDF path-fill/stroke operators, so it stays sharp
@@ -78,6 +92,14 @@ export type FetchImage = (url: string) => Promise<{ bytes: Uint8Array; mimeType:
  * cloud metadata endpoint or an internal-only service). Callers that know
  * their own trust boundary can pass a `fetchImage` that wraps a plain
  * `fetch`, or one with an allowlist/timeout/proxy layered on top.
+ *
+ * Text is always drawn with one of PDF's 14 standard fonts unless the
+ * caller supplies `fetchFont` — this function never assumes a font is
+ * available beyond those 14. When `fetchFont` is given, it's asked once
+ * per distinct font-family/weight/style combination actually used in the
+ * SVG (see the pre-pass below); a `null` response, a throw, or no
+ * `fetchFont` at all all fall back to the nearest standard-14 font the
+ * same way `resolveStandardFont` in core already picks one.
  */
 export const embedSvgInPdf = async (
     doc: LibPDF,
@@ -89,6 +111,7 @@ export const embedSvgInPdf = async (
         orientation?: PageOrientation;
         margin?: number;
         fetchImage?: FetchImage;
+        fetchFont?: FetchFont;
     },
 ): Promise<EmbedSvgResult> => {
     const {
@@ -99,6 +122,7 @@ export const embedSvgInPdf = async (
         orientation = 'portrait',
         margin = 0,
         fetchImage,
+        fetchFont,
     } = svg;
 
     let parsed;
@@ -205,10 +229,21 @@ export const embedSvgInPdf = async (
      * width — the same two-pass "measure everything, then offset" shape
      * svg2pdf.js's TextChunk uses. The main loop below just looks the
      * results up instead of computing anchor offsets per run.
+     *
+     * The same pass also resolves each run's actual font: if `fetchFont` is
+     * supplied, it's asked once per distinct (fontFamily, fontWeight,
+     * fontStyle) combination (cached by that key, not per instruction) for
+     * raw font bytes to embed via `doc.embedFont()`; the resulting
+     * `EmbeddedFont` is used for both measurement and drawing instead of
+     * `instruction.font`'s standard-14 fallback. A missing/failed font
+     * warns once per combination and keeps the standard-14 fallback rather
+     * than failing the whole document.
      */
     const textWidths = new WeakMap<TextInstruction, number>();
     const textAnchorOffsets = new WeakMap<TextInstruction, number>();
+    const textFonts = new WeakMap<TextInstruction, FontInput>();
     {
+        const embeddedFontCache = new Map<string, EmbeddedFont | null>();
         let chunk: TextInstruction[] = [];
         const flushChunk = (): void => {
             if (chunk.length === 0) return;
@@ -224,10 +259,36 @@ export const embedSvgInPdf = async (
         };
         for (const instruction of instructions) {
             if (instruction.type !== 'text') continue;
-            textWidths.set(
-                instruction,
-                measureText(instruction.text, instruction.font, instruction.fontSize),
-            );
+            let font: FontInput = instruction.font;
+            if (fetchFont) {
+                const key = `${instruction.fontFamily} ${instruction.fontWeight} ${instruction.fontStyle}`;
+                if (!embeddedFontCache.has(key)) {
+                    let embedded: EmbeddedFont | null = null;
+                    try {
+                        const bytes = await fetchFont({
+                            fontFamily: instruction.fontFamily,
+                            fontWeight: instruction.fontWeight,
+                            fontStyle: instruction.fontStyle,
+                        });
+                        if (bytes) {
+                            embedded = doc.embedFont(bytes);
+                        } else {
+                            warnings.push(
+                                `No font was found for "${instruction.fontFamily}" (weight ${instruction.fontWeight}, style ${instruction.fontStyle}); falling back to a standard font`,
+                            );
+                        }
+                    } catch {
+                        warnings.push(
+                            `Font "${instruction.fontFamily}" (weight ${instruction.fontWeight}, style ${instruction.fontStyle}) could not be embedded and was skipped; falling back to a standard font`,
+                        );
+                    }
+                    embeddedFontCache.set(key, embedded);
+                }
+                const embedded = embeddedFontCache.get(key) ?? null;
+                if (embedded) font = embedded;
+            }
+            textFonts.set(instruction, font);
+            textWidths.set(instruction, measureText(instruction.text, font, instruction.fontSize));
             if (instruction.startsNewChunk) flushChunk();
             chunk.push(instruction);
         }
@@ -363,7 +424,7 @@ export const embedSvgInPdf = async (
                 page.drawText(instruction.text, {
                     x: startX + anchorOffsetX,
                     y: -instruction.y,
-                    font: instruction.font,
+                    font: textFonts.get(instruction) ?? instruction.font,
                     size: instruction.fontSize,
                     color: toPdfColor(instruction.fill),
                     opacity: instruction.fillOpacity,
