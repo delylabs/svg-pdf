@@ -192,8 +192,8 @@ export function walkNode(
      * extracts the raw `href` unchanged — it doesn't judge whether it's an
      * inline `data:` URI or an external URL, since fetching policy (whether
      * to fetch at all, timeouts, allowlists) is an adapter/caller concern,
-     * not a parsing one. Actual decode (and any fetch) happens in
-     * svgEmbed.ts.
+     * not a parsing one. Actual decode (and any fetch) happens in the
+     * adapter (e.g. `@delylabs/plotify-libpdf`'s `draw/drawImage.ts`).
      */
     if (tag === 'image') {
         const href = el.getAttribute('href') ?? el.getAttribute('xlink:href');

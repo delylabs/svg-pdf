@@ -161,7 +161,8 @@ function walkTextPathElement(el: Element, inherited: ShapePaint, ctx: WalkContex
  * below is what tells those two cases apart, so the first run after a fresh
  * position never continues from whatever unrelated text last measured
  * somewhere else. Only non-first siblings lacking their own `x` are marked
- * `continuesFlow`; svgEmbed.ts resolves the actual continuation position at
+ * `continuesFlow`; the adapter (e.g. `@delylabs/plotify-libpdf`'s
+ * `draw/drawText.ts`) resolves the actual continuation position at
  * draw time via a running cursor (it needs `measureText`, a library function
  * this module deliberately never touches). This still isn't full per-glyph
  * text-flow layout (no bidi, no per-character kerning beyond the font's own
@@ -171,10 +172,11 @@ function walkTextPathElement(el: Element, inherited: ShapePaint, ctx: WalkContex
  * the last run with its own explicit `x` or `y`), not to each run
  * individually — a chunk's total advance width determines one shared offset
  * for all its runs. `startsNewChunk` marks where a chunk begins (own `x` or
- * `y`, or first-in-sequence); svgEmbed.ts groups runs by it before applying
- * `textAnchor`. Note this is a coarser, per-run approximation of the real
- * per-*character* chunk rule (a `<tspan>` with only some of its child
- * characters repositioned still doesn't split into two chunks here).
+ * `y`, or first-in-sequence); the adapter groups runs by it (e.g.
+ * `draw/textLayout.ts`) before applying `textAnchor`. Note this is a
+ * coarser, per-run approximation of the real per-*character* chunk rule (a
+ * `<tspan>` with only some of its child characters repositioned still
+ * doesn't split into two chunks here).
  *
  * `<textPath>` is handled separately by `walkTextPathElement` above — see
  * its own doc comment and `TextPathInstruction` in types.ts.

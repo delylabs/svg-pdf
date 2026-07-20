@@ -66,7 +66,7 @@ export interface FontFaceDef {
     readonly fontFamily: string;
     readonly fontWeight: string;
     readonly fontStyle: string;
-    // The first `data:` URI found in `src`, or `null` if `src` only has external URLs (or is missing) — decoding is svgEmbed.ts's job, same as `<image>` data URIs.
+    // The first `data:` URI found in `src`, or `null` if `src` only has external URLs (or is missing) — decoding is the adapter's job (e.g. `draw/dataUri.ts`), same as `<image>` data URIs.
     readonly dataUri: string | null;
 }
 

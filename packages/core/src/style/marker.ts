@@ -13,7 +13,7 @@ export interface MarkerViewBox {
 
 /*
  * Everything about a <marker> except its drawable content — same split as
- * `PatternAttrs`/`PatternDef` in `style/pattern.ts` and `parse/walk.ts`, and
+ * `PatternAttrs`/`PatternDef` in `style/pattern.ts` and `parse/pattern.ts`, and
  * for the same reason (this module never needs the tree walker just for a
  * type).
  */

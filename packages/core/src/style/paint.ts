@@ -60,7 +60,7 @@ export const DEFAULT_PAINT: ShapePaint = {
 
 /*
  * Narrow view of the tree-walking context that paint/attribute resolution
- * actually needs — kept separate from `parse/walk.ts`'s full `WalkContext`
+ * actually needs — kept separate from `parse/context.ts`'s full `WalkContext`
  * (which additionally tracks `instructions`/`visitedUseIds`) so this module
  * doesn't have to import the walker just for a type.
  */

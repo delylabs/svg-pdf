@@ -49,6 +49,6 @@ export interface DrawContext {
     readonly textAnchorOffsets: WeakMap<TextInstruction, number>;
     readonly textFonts: WeakMap<TextInstruction, FontInput>;
     readonly fetchImage: FetchImage | undefined;
-    // Running x-cursor for <tspan>-without-its-own-x "flow" runs (see `continuesFlow`'s doc comment in svgCodec.ts) — only read when the next 'text' instruction is actually flagged, so unrelated text blocks never leak into each other.
+    // Running x-cursor for <tspan>-without-its-own-x "flow" runs (see `continuesFlow`'s doc comment on `TextInstruction` in `@delylabs/plotify`'s types.ts) — only read when the next 'text' instruction is actually flagged, so unrelated text blocks never leak into each other.
     flowCursorX: number | null;
 }

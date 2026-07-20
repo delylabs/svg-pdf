@@ -75,7 +75,7 @@ export interface GradientPaintRef {
 /*
  * A fill/stroke that resolved to `url(#id)` pointing at a <pattern> with a
  * positive width/height (a 0-size pattern renders nothing, per spec, so
- * never produces this variant — see `resolvePatternDef` in `parse/walk.ts`).
+ * never produces this variant — see `resolvePatternDef` in `parse/pattern.ts`).
  */
 export interface PatternPaintRef {
     readonly kind: 'pattern';
@@ -142,8 +142,9 @@ export interface ShapeInstruction extends ShapePaint {
     /*
      * Absolute matrix from the viewBox root to this shape's own local space —
      * gradient/pattern matrices in PDF map to the page's default space
-     * regardless of the current graphics-state CTM, so svgEmbed.ts needs this
-     * to position a gradient correctly (see the module doc comment there).
+     * regardless of the current graphics-state CTM, so the adapter needs
+     * this to position a gradient correctly (see `buildPatternMatrix` in
+     * `@delylabs/plotify-libpdf`'s `resources/paint.ts`).
      */
     readonly groupMatrix: Matrix2D;
     // Local bounding box, computed lazily only for objectBoundingBox-units gradient/clip.
@@ -190,9 +191,10 @@ export interface TextInstruction {
      * Extra spacing (in points, already resolved from any `em`/`normal`
      * source unit) added after every character (`letterSpacing`) or after
      * every literal space character (`wordSpacing`) — passed straight
-     * through to PDF's own `Tc`/`Tw` text-state operators in svgEmbed.ts,
-     * so measurement here must add the exact same amount those operators
-     * will add at draw time (see `textWidths` in svgEmbed.ts).
+     * through to PDF's own `Tc`/`Tw` text-state operators in
+     * `draw/drawText.ts`, so measurement here must add the exact same
+     * amount those operators will add at draw time (see `textWidths` in
+     * `draw/textLayout.ts`).
      */
     readonly letterSpacing: number;
     readonly wordSpacing: number;
@@ -200,7 +202,7 @@ export interface TextInstruction {
      * True for a <tspan> with no `x` of its own that isn't the first run in
      * its sequence — it should start exactly where the previous sibling's
      * rendered text ended, not at `x` above (which is just a same-position
-     * fallback for when it's drawn in isolation). svgEmbed.ts resolves the
+     * fallback for when it's drawn in isolation). `draw/drawText.ts` resolves the
      * real position at draw time via a running cursor (needs `measureText`).
      */
     readonly continuesFlow: boolean;
@@ -222,8 +224,9 @@ export interface TextInstruction {
  * different from a single positioned string, and (like the anchor-chunk
  * pre-pass and `<a>` link bboxing) genuinely needs `measureText`, which
  * this module deliberately never touches — so this instruction carries
- * everything svgEmbed.ts needs (already-flattened path geometry, already-
- * resolved start distance) to do that character-by-character walk itself.
+ * everything the adapter needs (already-flattened path geometry, already-
+ * resolved start distance) to do that character-by-character walk itself
+ * (see `@delylabs/plotify-libpdf`'s `draw/drawTextPath.ts`).
  * `textLength`/`lengthAdjust` (glyph-spacing to fit an exact length) and
  * nested `<tspan>` children inside a `<textPath>` are out of scope — only
  * the `<textPath>` element's own direct text content is used.
@@ -273,7 +276,7 @@ export interface ImageInstruction {
  * One marker-start/-mid/-end placement along a path/line/polyline/polygon —
  * see `computeMarkerVertices` (geometry/markerVertices.ts) for how vertex
  * position/tangent angle are derived, and `resolveMarkerDef`/the `<marker>`
- * placement code in `parse/walk.ts` for how `angle`/`scale` fold in the
+ * placement code in `parse/marker.ts` for how `angle`/`scale` fold in the
  * marker's own `orient`/`markerUnits`. `x`/`y`/`angle` are in the referencing
  * shape's own local (pre-transform) space, same as `ShapeInstruction.d` —
  * an adapter draws a marker exactly where it draws the shape's path, under
@@ -301,7 +304,7 @@ export interface MarkerInstruction {
  * `ShapeInstruction.groupMatrix` rather than a plain absolute box — so this
  * stays a bracket instead of a precomputed rect. A `href="#fragment"` (no
  * cross-page target makes sense for a single-page-per-SVG PDF) never
- * produces this instruction at all — see `walk.ts`.
+ * produces this instruction at all — see `resolveLinkHref` in `parse/text.ts`.
  */
 export interface LinkStartInstruction {
     readonly type: 'linkStart';
@@ -324,7 +327,7 @@ export type SvgInstruction =
 /*
  * A resolved <pattern>'s tile geometry plus its content, already walked into
  * the same flat instruction list shapes/groups/text/images use elsewhere in
- * this file — see `resolvePatternDef` in `parse/walk.ts` for how it's built,
+ * this file — see `resolvePatternDef` in `parse/pattern.ts` for how it's built,
  * and `@delylabs/plotify-libpdf`'s pattern module for how a PDF adapter turns
  * it into an actual tiling pattern (a real library constraint scopes which of
  * these instruction types it can honor inside a pattern cell — not every
@@ -345,7 +348,7 @@ export interface PatternDef {
 /*
  * A resolved <marker>'s geometry (viewport size/units, reference point,
  * default orientation) plus its content, walked the same way `PatternDef`'s
- * is — see `resolveMarkerDef` in `parse/walk.ts`.
+ * is — see `resolveMarkerDef` in `parse/marker.ts`.
  */
 export interface MarkerDef {
     readonly refX: number;

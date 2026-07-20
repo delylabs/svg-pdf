@@ -22,14 +22,14 @@ const transformPoint = (x: number, y: number, m: Matrix2D): [number, number] => 
  * Turns a resolved <marker> into a reusable `@libpdf/core` Form XObject.
  *
  * Unlike a tiling pattern, a Form XObject is painted through an ordinary
- * `cm`/`Do` pair in the *page's own* content stream (see `svgEmbed.ts`'s
- * `'marker'` case) — so it inherits whatever CTM is active there just like
- * any other draw call, and can be positioned/rotated/scaled freely per use.
- * That means, unlike `pattern.ts`'s `resolvePatternFill`, there's no
- * axis-aligned-only restriction here: this function only has to build the
- * marker's own *internal* content once (shared across every vertex it's
- * used at); per-vertex placement (anchor, `orient`-derived angle,
- * markerUnits scale) is entirely `svgEmbed.ts`'s concern.
+ * `cm`/`Do` pair in the *page's own* content stream (see `draw/drawMarker.ts`)
+ * — so it inherits whatever CTM is active there just like any other draw
+ * call, and can be positioned/rotated/scaled freely per use. That means,
+ * unlike `pattern.ts`'s `resolvePatternFill`, there's no axis-aligned-only
+ * restriction here: this function only has to build the marker's own
+ * *internal* content once (shared across every vertex it's used at);
+ * per-vertex placement (anchor, `orient`-derived angle, markerUnits scale)
+ * is entirely `draw/drawMarker.ts`'s concern.
  *
  * `@libpdf/core`'s `FormXObjectOptions` has the same `{bbox, operators}`
  * shape as `TilingPatternOptions` (no resources field), so marker content

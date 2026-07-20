@@ -8,9 +8,8 @@ not patched in afterward.
 
 ## Feature gaps to close
 
-See README's "Not yet supported" list.
+See `docs/supported-features.md`'s "Not yet supported" list.
 
 ## After that
 
-git init, `package.json`/build tooling per package, `LICENSE` +
-`THIRD_PARTY_NOTICES`, tests, CI, npm publish.
+CI, npm publish.

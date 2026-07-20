@@ -5,7 +5,7 @@ import { normalizePathData } from './bbox';
  * rotates it to (radians, in the path's own local pre-transform coordinate
  * space — same convention every other angle/matrix in this codebase uses, so
  * composing it with the shape's ambient transform later needs no special
- * Y-flip handling, see `parse/walk.ts`'s marker placement code).
+ * Y-flip handling, see `parse/marker.ts`'s marker placement code).
  */
 export interface MarkerVertex {
     readonly x: number;
