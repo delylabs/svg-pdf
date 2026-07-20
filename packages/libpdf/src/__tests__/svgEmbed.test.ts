@@ -554,6 +554,51 @@ describe('embedSvgInPdf', () => {
             // Must start at its own x=10, not continue from Line1's end (10 + measured width of "Line1").
             expect(Number(secondLineX![1])).toBeCloseTo(10, 5);
         });
+
+        it('applies text-anchor once to a whole multi-tspan chunk (by total width), not separately per run', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 200 100"><text x="50" y="20" text-anchor="middle"><tspan>Hello</tspan><tspan>World</tspan></text></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            const matches = [...content.matchAll(/1 0 0 1 (-?[\d.]+) -20 Tm/g)].map((m) =>
+                Number(m[1]),
+            );
+            expect(matches).toHaveLength(2);
+            const helloWidth = measureText('Hello', 'Helvetica', 16);
+            const worldWidth = measureText('World', 'Helvetica', 16);
+            const chunkOffset = -(helloWidth + worldWidth) / 2;
+            // Both runs shift by the same offset (from the chunk's combined width) — not
+            // each centered around its own width, which would put a gap in the middle.
+            expect(matches[0]).toBeCloseTo(50 + chunkOffset, 5);
+            expect(matches[1]).toBeCloseTo(50 + chunkOffset + helloWidth, 5);
+        });
+
+        it('starts a new anchor chunk for a tspan with its own y, even without its own x (x-cursor still flows)', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 200 100"><text x="50" text-anchor="middle"><tspan y="20">Hi</tspan><tspan y="40">World</tspan></text></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            const firstLine = content.match(/1 0 0 1 (-?[\d.]+) -20 Tm/);
+            const secondLine = content.match(/1 0 0 1 (-?[\d.]+) -40 Tm/);
+            expect(firstLine).not.toBeNull();
+            expect(secondLine).not.toBeNull();
+            const hiWidth = measureText('Hi', 'Helvetica', 16);
+            const worldWidth = measureText('World', 'Helvetica', 16);
+            // First run: its own one-run chunk, centered on x=50 as usual.
+            expect(Number(firstLine![1])).toBeCloseTo(50 - hiWidth / 2, 5);
+            // Second run: a *new* anchor chunk (own y), so it's centered using only its
+            // own width — but the x-cursor isn't reset by y alone, so its unanchored
+            // start is still "Hi"'s *unshifted* end (x=50 + hiWidth, before any anchor
+            // offset — the cursor tracks natural flow, not the anchored draw position),
+            // per spec (only x/dx affect the run cursor).
+            expect(Number(secondLine![1])).toBeCloseTo(50 + hiWidth - worldWidth / 2, 5);
+        });
     });
 
     describe('image', () => {

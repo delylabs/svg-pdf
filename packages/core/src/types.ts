@@ -159,6 +159,16 @@ export interface TextInstruction {
     readonly y: number;
     readonly fontSize: number;
     readonly font: StandardFontName;
+    /*
+     * The raw font-family/weight/style this run actually requested, before
+     * `resolveStandardFont` collapsed it down to one of the 14 names above.
+     * Unused by `font` support today (still standard-14 only), but kept
+     * alongside it so a future font-embedding adapter can match against the
+     * real request instead of an already-substituted fallback.
+     */
+    readonly fontFamily: string;
+    readonly fontWeight: string;
+    readonly fontStyle: string;
     readonly fill: RgbColor;
     readonly fillOpacity: number;
     readonly textAnchor: TextAnchor;
@@ -170,6 +180,15 @@ export interface TextInstruction {
      * real position at draw time via a running cursor (needs `measureText`).
      */
     readonly continuesFlow: boolean;
+    /*
+     * False for a <tspan> with no `x`/`y` of its own that isn't the first run
+     * in its sequence — it belongs to the same text chunk as the run before
+     * it, so `text-anchor` must be resolved once for the whole chunk (total
+     * advance width across every run in it) rather than per run. Distinct
+     * from `continuesFlow`: an own `y` (no `x`) starts a new anchor chunk per
+     * spec even though the x-cursor still isn't reset.
+     */
+    readonly startsNewChunk: boolean;
 }
 
 /*

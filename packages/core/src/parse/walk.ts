@@ -405,6 +405,15 @@ const withClip = (el: Element, ctx: WalkContext, draw: () => void): void => {
  * this module deliberately never touches). This still isn't full per-glyph
  * text-flow layout (no bidi, no per-character kerning beyond the font's own
  * built-in metrics), but it correctly threads multi-run lines.
+ *
+ * Per spec, `text-anchor` applies to a whole *text chunk* (every run back to
+ * the last run with its own explicit `x` or `y`), not to each run
+ * individually — a chunk's total advance width determines one shared offset
+ * for all its runs. `startsNewChunk` marks where a chunk begins (own `x` or
+ * `y`, or first-in-sequence); svgEmbed.ts groups runs by it before applying
+ * `textAnchor`. Note this is a coarser, per-run approximation of the real
+ * per-*character* chunk rule (a `<tspan>` with only some of its child
+ * characters repositioned still doesn't split into two chunks here).
  */
 function walkTextElement(
     el: Element,
@@ -421,11 +430,13 @@ function walkTextElement(
 
     const paint = resolvePaint(el, inherited, ctx);
     const hasOwnX = el.hasAttribute('x');
+    const hasOwnY = el.hasAttribute('y');
     const ownX = hasOwnX ? num(el.getAttribute('x')) : cursorX;
-    const ownY = el.hasAttribute('y') ? num(el.getAttribute('y')) : cursorY;
+    const ownY = hasOwnY ? num(el.getAttribute('y')) : cursorY;
     const x = ownX + parseLengthOrEm(el.getAttribute('dx'), paint.fontSize);
     const y = ownY + parseLengthOrEm(el.getAttribute('dy'), paint.fontSize);
     const continuesFlow = !isFirstInSequence && !hasOwnX;
+    const startsNewChunk = isFirstInSequence || hasOwnX || hasOwnY;
 
     const ownText = collectDirectText(el);
     if (ownText && paint.fill !== null) {
@@ -454,10 +465,14 @@ function walkTextElement(
             y,
             fontSize: paint.fontSize,
             font: resolveStandardFont(paint.fontFamily, paint.fontWeight, paint.fontStyle),
+            fontFamily: paint.fontFamily,
+            fontWeight: paint.fontWeight,
+            fontStyle: paint.fontStyle,
             fill,
             fillOpacity: paint.fillOpacity,
             textAnchor: paint.textAnchor,
             continuesFlow,
+            startsNewChunk,
         });
     }
 

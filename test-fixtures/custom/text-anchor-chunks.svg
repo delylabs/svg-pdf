@@ -1,0 +1,15 @@
+<svg viewBox="0 0 400 200" xmlns="http://www.w3.org/2000/svg">
+  <rect x="200" width="1" height="200" fill="lightgray"/>
+  <g font-size="20" text-anchor="middle">
+    <text x="200" y="40"><tspan>Hello</tspan><tspan fill="crimson">World</tspan></text>
+  </g>
+  <g font-size="20" text-anchor="end">
+    <text x="200" y="80"><tspan>Hello</tspan><tspan fill="crimson">World</tspan></text>
+  </g>
+  <g font-size="20" text-anchor="start">
+    <text x="200" y="120"><tspan>Hello</tspan><tspan fill="crimson">World</tspan></text>
+  </g>
+  <g font-size="20" text-anchor="middle">
+    <text x="200" y="160"><tspan>One</tspan><tspan fill="seagreen">Two</tspan><tspan fill="crimson">Three</tspan></text>
+  </g>
+</svg>

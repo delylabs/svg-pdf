@@ -9,6 +9,7 @@ import {
     multiplyMatrix,
     parseSvgDocument,
     scaleMatrix,
+    type TextInstruction,
     translateMatrix,
 } from '@delylabs/plotify';
 import { buildMarkerFormXObject } from './marker';
@@ -193,6 +194,46 @@ export const embedSvgInPdf = async (
     // Running x-cursor for <tspan>-without-its-own-x "flow" runs (see `continuesFlow`'s doc comment in svgCodec.ts) — only read when the next 'text' instruction is actually flagged, so unrelated text blocks never leak into each other.
     let flowCursorX: number | null = null;
 
+    /*
+     * `text-anchor` applies to a whole text chunk (every run back to the
+     * last one with its own explicit x/y — see `startsNewChunk`'s doc
+     * comment in types.ts), not to each run individually. A pre-pass groups
+     * runs into chunks by document order (they're always contiguous in
+     * `instructions`, since walkTextElement never interleaves a <text>
+     * subtree's runs with any pushMatrix/popMatrix), measures each run once,
+     * and computes one shared anchor offset per chunk from its total advance
+     * width — the same two-pass "measure everything, then offset" shape
+     * svg2pdf.js's TextChunk uses. The main loop below just looks the
+     * results up instead of computing anchor offsets per run.
+     */
+    const textWidths = new WeakMap<TextInstruction, number>();
+    const textAnchorOffsets = new WeakMap<TextInstruction, number>();
+    {
+        let chunk: TextInstruction[] = [];
+        const flushChunk = (): void => {
+            if (chunk.length === 0) return;
+            const totalWidth = chunk.reduce((sum, run) => sum + (textWidths.get(run) ?? 0), 0);
+            const offset =
+                chunk[0].textAnchor === 'middle'
+                    ? -totalWidth / 2
+                    : chunk[0].textAnchor === 'end'
+                      ? -totalWidth
+                      : 0;
+            for (const run of chunk) textAnchorOffsets.set(run, offset);
+            chunk = [];
+        };
+        for (const instruction of instructions) {
+            if (instruction.type !== 'text') continue;
+            textWidths.set(
+                instruction,
+                measureText(instruction.text, instruction.font, instruction.fontSize),
+            );
+            if (instruction.startsNewChunk) flushChunk();
+            chunk.push(instruction);
+        }
+        flushChunk();
+    }
+
     // A <marker>'s Form XObject only needs building once (its content never varies per vertex) — cached by id, `null` remembered too so a marker that failed to build (e.g. zero markerWidth/markerHeight) isn't retried at every vertex.
     const markerXObjects = new Map<string, PDFFormXObject | null>();
     const getMarkerXObject = (markerId: string, def: MarkerDef): PDFFormXObject | null => {
@@ -313,20 +354,11 @@ export const embedSvgInPdf = async (
                  * A local counter Y-flip right here cancels exactly that,
                  * while still inheriting any real rotation from ancestors.
                  */
-                const textWidth = measureText(
-                    instruction.text,
-                    instruction.font,
-                    instruction.fontSize,
-                );
+                const textWidth = textWidths.get(instruction) ?? 0;
                 const startX: number =
                     instruction.continuesFlow && flowCursorX !== null ? flowCursorX : instruction.x;
                 flowCursorX = startX + textWidth;
-                const anchorOffsetX =
-                    instruction.textAnchor === 'middle'
-                        ? -textWidth / 2
-                        : instruction.textAnchor === 'end'
-                          ? -textWidth
-                          : 0;
+                const anchorOffsetX = textAnchorOffsets.get(instruction) ?? 0;
                 page.drawOperators([ops.pushGraphicsState(), concat(FLIP_Y)]);
                 page.drawText(instruction.text, {
                     x: startX + anchorOffsetX,
