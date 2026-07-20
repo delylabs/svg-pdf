@@ -237,6 +237,187 @@ const arcToCubicCurves = (
     return curves;
 };
 
+// --- Normalized (absolute M/L/C/Z) path segments -------------------------
+
+/*
+ * A path `d` string reduced to only absolute moveto/lineto/curveto/closepath
+ * segments — H/V/S/T expanded, arcs converted to cubic beziers, all relative
+ * commands resolved to absolute coordinates. Used both for this module's own
+ * bbox estimation and (via `@delylabs/plotify-libpdf`'s pattern-cell operator
+ * builder) to turn arbitrary path data into raw PDF path-construction
+ * operators without a second, independent path parser.
+ */
+export type NormalizedPathSegment =
+    | { readonly cmd: 'M'; readonly x: number; readonly y: number }
+    | { readonly cmd: 'L'; readonly x: number; readonly y: number }
+    | {
+          readonly cmd: 'C';
+          readonly x1: number;
+          readonly y1: number;
+          readonly x2: number;
+          readonly y2: number;
+          readonly x: number;
+          readonly y: number;
+      }
+    | { readonly cmd: 'Z' };
+
+/**
+ * Parses an SVG path `d` string into a flat list of absolute M/L/C/Z
+ * segments (see `NormalizedPathSegment`). Returns an empty array for an
+ * empty/unparseable path.
+ */
+export const normalizePathData = (d: string): NormalizedPathSegment[] => {
+    const segments = parsePathSegments(d);
+    const out: NormalizedPathSegment[] = [];
+
+    let x = 0;
+    let y = 0;
+    let subpathStartX = 0;
+    let subpathStartY = 0;
+    // S/T shorthand curves mirror the previous curve's control point around the current point.
+    let prevCubicControl: [number, number] | null = null;
+    let prevQuadControl: [number, number] | null = null;
+
+    for (const seg of segments) {
+        const [rawCmd, ...args] = seg;
+        const cmd = rawCmd;
+        const isRelative = cmd === cmd.toLowerCase();
+        const cmdUC = cmd.toUpperCase();
+        const rel = (v: number, axis: 'x' | 'y') => (isRelative ? v + (axis === 'x' ? x : y) : v);
+
+        if (cmdUC !== 'S') prevCubicControl = null;
+        if (cmdUC !== 'T') prevQuadControl = null;
+
+        switch (cmdUC) {
+            case 'M': {
+                x = rel(args[0], 'x');
+                y = rel(args[1], 'y');
+                subpathStartX = x;
+                subpathStartY = y;
+                out.push({ cmd: 'M', x, y });
+                break;
+            }
+            case 'L': {
+                x = rel(args[0], 'x');
+                y = rel(args[1], 'y');
+                out.push({ cmd: 'L', x, y });
+                break;
+            }
+            case 'H': {
+                x = rel(args[0], 'x');
+                out.push({ cmd: 'L', x, y });
+                break;
+            }
+            case 'V': {
+                y = rel(args[0], 'y');
+                out.push({ cmd: 'L', x, y });
+                break;
+            }
+            case 'C': {
+                const cp1x = rel(args[0], 'x');
+                const cp1y = rel(args[1], 'y');
+                const cp2x = rel(args[2], 'x');
+                const cp2y = rel(args[3], 'y');
+                const ex = rel(args[4], 'x');
+                const ey = rel(args[5], 'y');
+                out.push({ cmd: 'C', x1: cp1x, y1: cp1y, x2: cp2x, y2: cp2y, x: ex, y: ey });
+                prevCubicControl = [cp2x, cp2y];
+                x = ex;
+                y = ey;
+                break;
+            }
+            case 'S': {
+                const cp1 = prevCubicControl
+                    ? [2 * x - prevCubicControl[0], 2 * y - prevCubicControl[1]]
+                    : [x, y];
+                const cp2x = rel(args[0], 'x');
+                const cp2y = rel(args[1], 'y');
+                const ex = rel(args[2], 'x');
+                const ey = rel(args[3], 'y');
+                out.push({ cmd: 'C', x1: cp1[0], y1: cp1[1], x2: cp2x, y2: cp2y, x: ex, y: ey });
+                prevCubicControl = [cp2x, cp2y];
+                x = ex;
+                y = ey;
+                break;
+            }
+            case 'Q': {
+                const cpx = rel(args[0], 'x');
+                const cpy = rel(args[1], 'y');
+                const ex = rel(args[2], 'x');
+                const ey = rel(args[3], 'y');
+                // Quadratic-to-cubic: cp1 = P0 + 2/3(QCP-P0), cp2 = P1 + 2/3(QCP-P1).
+                out.push({
+                    cmd: 'C',
+                    x1: x + (2 / 3) * (cpx - x),
+                    y1: y + (2 / 3) * (cpy - y),
+                    x2: ex + (2 / 3) * (cpx - ex),
+                    y2: ey + (2 / 3) * (cpy - ey),
+                    x: ex,
+                    y: ey,
+                });
+                prevQuadControl = [cpx, cpy];
+                x = ex;
+                y = ey;
+                break;
+            }
+            case 'T': {
+                const cp: [number, number] = prevQuadControl
+                    ? [2 * x - prevQuadControl[0], 2 * y - prevQuadControl[1]]
+                    : [x, y];
+                const ex = rel(args[0], 'x');
+                const ey = rel(args[1], 'y');
+                out.push({
+                    cmd: 'C',
+                    x1: x + (2 / 3) * (cp[0] - x),
+                    y1: y + (2 / 3) * (cp[1] - y),
+                    x2: ex + (2 / 3) * (cp[0] - ex),
+                    y2: ey + (2 / 3) * (cp[1] - ey),
+                    x: ex,
+                    y: ey,
+                });
+                prevQuadControl = cp;
+                x = ex;
+                y = ey;
+                break;
+            }
+            case 'A': {
+                const rx = args[0];
+                const ry = args[1];
+                const rotation = args[2];
+                const largeArc = args[3];
+                const sweep = args[4];
+                const ex = rel(args[5], 'x');
+                const ey = rel(args[6], 'y');
+                const curves = arcToCubicCurves(x, y, ex, ey, largeArc, sweep, rx, ry, rotation);
+                // Each curve is [startX, startY, cp1x, cp1y, cp2x, cp2y, endX, endY] — the start point is redundant (already the running x/y) so only indices 2-7 feed the cubic segment.
+                for (const curve of curves) {
+                    out.push({
+                        cmd: 'C',
+                        x1: curve[2],
+                        y1: curve[3],
+                        x2: curve[4],
+                        y2: curve[5],
+                        x: curve[6],
+                        y: curve[7],
+                    });
+                }
+                if (curves.length === 0) out.push({ cmd: 'L', x: ex, y: ey });
+                x = ex;
+                y = ey;
+                break;
+            }
+            case 'Z': {
+                x = subpathStartX;
+                y = subpathStartY;
+                out.push({ cmd: 'Z' });
+                break;
+            }
+        }
+    }
+
+    return out;
+};
+
 // --- Bounding box from normalized (absolute M/L/C) points ---------------
 
 interface BBoxAccumulator {
@@ -270,7 +451,7 @@ export interface BBoxRect {
  * Returns `null` for an empty/unparseable path.
  */
 export const computePathBBox = (d: string): BBoxRect | null => {
-    const segments = parsePathSegments(d);
+    const segments = normalizePathData(d);
     if (segments.length === 0) return null;
 
     const acc: BBoxAccumulator = {
@@ -281,129 +462,19 @@ export const computePathBBox = (d: string): BBoxRect | null => {
         any: false,
     };
 
-    let x = 0;
-    let y = 0;
-    let subpathStartX = 0;
-    let subpathStartY = 0;
-    // S/T shorthand curves mirror the previous curve's control point around the current point.
-    let prevCubicControl: [number, number] | null = null;
-    let prevQuadControl: [number, number] | null = null;
-
     for (const seg of segments) {
-        const [rawCmd, ...args] = seg;
-        const cmd = rawCmd;
-        const isRelative = cmd === cmd.toLowerCase();
-        const cmdUC = cmd.toUpperCase();
-        const rel = (v: number, axis: 'x' | 'y') => (isRelative ? v + (axis === 'x' ? x : y) : v);
-
-        if (cmdUC !== 'S') prevCubicControl = null;
-        if (cmdUC !== 'T') prevQuadControl = null;
-
-        switch (cmdUC) {
-            case 'M': {
-                x = rel(args[0], 'x');
-                y = rel(args[1], 'y');
-                subpathStartX = x;
-                subpathStartY = y;
-                include(acc, x, y);
+        switch (seg.cmd) {
+            case 'M':
+            case 'L':
+                include(acc, seg.x, seg.y);
                 break;
-            }
-            case 'L': {
-                x = rel(args[0], 'x');
-                y = rel(args[1], 'y');
-                include(acc, x, y);
+            case 'C':
+                include(acc, seg.x1, seg.y1);
+                include(acc, seg.x2, seg.y2);
+                include(acc, seg.x, seg.y);
                 break;
-            }
-            case 'H': {
-                x = rel(args[0], 'x');
-                include(acc, x, y);
+            case 'Z':
                 break;
-            }
-            case 'V': {
-                y = rel(args[0], 'y');
-                include(acc, x, y);
-                break;
-            }
-            case 'C': {
-                const cp1x = rel(args[0], 'x');
-                const cp1y = rel(args[1], 'y');
-                const cp2x = rel(args[2], 'x');
-                const cp2y = rel(args[3], 'y');
-                const ex = rel(args[4], 'x');
-                const ey = rel(args[5], 'y');
-                include(acc, cp1x, cp1y);
-                include(acc, cp2x, cp2y);
-                include(acc, ex, ey);
-                prevCubicControl = [cp2x, cp2y];
-                x = ex;
-                y = ey;
-                break;
-            }
-            case 'S': {
-                const cp1 = prevCubicControl
-                    ? [2 * x - prevCubicControl[0], 2 * y - prevCubicControl[1]]
-                    : [x, y];
-                const cp2x = rel(args[0], 'x');
-                const cp2y = rel(args[1], 'y');
-                const ex = rel(args[2], 'x');
-                const ey = rel(args[3], 'y');
-                include(acc, cp1[0], cp1[1]);
-                include(acc, cp2x, cp2y);
-                include(acc, ex, ey);
-                prevCubicControl = [cp2x, cp2y];
-                x = ex;
-                y = ey;
-                break;
-            }
-            case 'Q': {
-                const cpx = rel(args[0], 'x');
-                const cpy = rel(args[1], 'y');
-                const ex = rel(args[2], 'x');
-                const ey = rel(args[3], 'y');
-                include(acc, cpx, cpy);
-                include(acc, ex, ey);
-                prevQuadControl = [cpx, cpy];
-                x = ex;
-                y = ey;
-                break;
-            }
-            case 'T': {
-                const cp: [number, number] = prevQuadControl
-                    ? [2 * x - prevQuadControl[0], 2 * y - prevQuadControl[1]]
-                    : [x, y];
-                const ex = rel(args[0], 'x');
-                const ey = rel(args[1], 'y');
-                include(acc, cp[0], cp[1]);
-                include(acc, ex, ey);
-                prevQuadControl = [cp[0], cp[1]];
-                x = ex;
-                y = ey;
-                break;
-            }
-            case 'A': {
-                const rx = args[0];
-                const ry = args[1];
-                const rotation = args[2];
-                const largeArc = args[3];
-                const sweep = args[4];
-                const ex = rel(args[5], 'x');
-                const ey = rel(args[6], 'y');
-                const curves = arcToCubicCurves(x, y, ex, ey, largeArc, sweep, rx, ry, rotation);
-                for (const curve of curves) {
-                    for (let p = 0; p < curve.length; p += 2) {
-                        include(acc, curve[p], curve[p + 1]);
-                    }
-                }
-                if (curves.length === 0) include(acc, ex, ey);
-                x = ex;
-                y = ey;
-                break;
-            }
-            case 'Z': {
-                x = subpathStartX;
-                y = subpathStartY;
-                break;
-            }
         }
     }
 

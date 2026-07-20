@@ -20,9 +20,13 @@ export type {
     ImageInstruction,
     LineCap,
     LineJoin,
+    MarkerDef,
+    MarkerInstruction,
     Paint,
     ParsedSvgDocument,
     ParsedSvgSize,
+    PatternDef,
+    PatternPaintRef,
     PreserveAspectRatioMode,
     PushClipInstruction,
     ShapeInstruction,
@@ -40,6 +44,8 @@ export {
     type Matrix2D,
     multiplyMatrix,
     parseTransformList,
+    scaleMatrix,
+    translateMatrix,
 } from './geometry/matrix';
 
 export {
@@ -53,7 +59,14 @@ export {
     shapeToPathData,
 } from './geometry/path';
 
-export { type BBoxRect, computePathBBox } from './geometry/bbox';
+export { computeMarkerVertices, type MarkerVertex } from './geometry/markerVertices';
+
+export {
+    type BBoxRect,
+    computePathBBox,
+    type NormalizedPathSegment,
+    normalizePathData,
+} from './geometry/bbox';
 
 export { parseSvgColor, type RgbColor } from './style/color';
 
@@ -64,5 +77,9 @@ export type {
     LinearGradientDef,
     RadialGradientDef,
 } from './style/gradient';
+
+export type { PatternUnits } from './style/pattern';
+
+export type { MarkerOrient, MarkerUnits, MarkerViewBox } from './style/marker';
 
 export { parseSvgDocument, parseSvgRoot, resolveSvgSize } from './parse/document';

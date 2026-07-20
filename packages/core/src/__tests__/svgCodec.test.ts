@@ -433,12 +433,139 @@ describe('parseSvgDocument (gradients)', () => {
         expect(shapesOf(doc)[0].fill).toBeNull();
     });
 
-    it('warns and falls back to no paint for a <pattern> reference', () => {
+    it('warns and falls back to no paint for an unresolvable url() reference', () => {
         const doc = parseSvgDocument(
-            '<svg viewBox="0 0 100 100"><defs><pattern id="p" width="1" height="1"/></defs><rect width="10" height="10" fill="url(#p)"/></svg>',
+            '<svg viewBox="0 0 100 100"><rect width="10" height="10" fill="url(#missing)"/></svg>',
         );
         expect(shapesOf(doc)[0].fill).toBeNull();
-        expect(doc.warnings.some((w) => w.includes('pattern reference'))).toBe(true);
+        expect(doc.warnings.some((w) => w.includes('reference target not found'))).toBe(true);
+    });
+});
+
+describe('parseSvgDocument (patterns)', () => {
+    it('resolves a <pattern> reference and walks its content', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><pattern id="p" width="10" height="10" patternUnits="userSpaceOnUse"><circle cx="5" cy="5" r="5" fill="red"/></pattern></defs><rect width="100" height="100" fill="url(#p)"/></svg>',
+        );
+        const fill = shapesOf(doc)[0].fill;
+        expect(fill).toEqual({ kind: 'pattern', patternId: 'p' });
+        const def = doc.patterns.get('p');
+        expect(def).toBeDefined();
+        expect(def?.patternUnits).toBe('userSpaceOnUse');
+        expect(def?.width).toBe(10);
+        expect(def?.instructions.some((i) => i.type === 'shape')).toBe(true);
+    });
+
+    it('defaults patternUnits to objectBoundingBox and patternContentUnits to userSpaceOnUse', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><pattern id="p" width="0.1" height="0.1"><rect width="5" height="5"/></pattern></defs><rect width="100" height="100" fill="url(#p)"/></svg>',
+        );
+        const def = doc.patterns.get('p');
+        expect(def?.patternUnits).toBe('objectBoundingBox');
+        expect(def?.patternContentUnits).toBe('userSpaceOnUse');
+        expect(def?.width).toBe(0.1);
+    });
+
+    it('inherits attributes and content from another <pattern> via href', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><pattern id="base" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="blue"/></pattern><pattern id="p" href="#base" patternTransform="translate(2,3)"/></defs><rect width="100" height="100" fill="url(#p)"/></svg>',
+        );
+        const def = doc.patterns.get('p');
+        expect(def?.width).toBe(10);
+        expect(def?.patternTransform).toEqual({ a: 1, b: 0, c: 0, d: 1, e: 2, f: 3 });
+        expect(def?.instructions.some((i) => i.type === 'shape')).toBe(true);
+    });
+
+    it('treats a 0-size pattern as no paint, per spec', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><pattern id="p" width="0" height="0"/></defs><rect width="10" height="10" fill="url(#p)"/></svg>',
+        );
+        expect(shapesOf(doc)[0].fill).toBeNull();
+        expect(doc.patterns.size).toBe(0);
+    });
+
+    it('warns and skips a pattern that fills itself (a reference cycle)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><pattern id="p" width="10" height="10"><rect width="10" height="10" fill="url(#p)"/></pattern></defs><rect width="100" height="100" fill="url(#p)"/></svg>',
+        );
+        expect(doc.warnings.some((w) => w.includes('forms a cycle'))).toBe(true);
+        const def = doc.patterns.get('p');
+        const innerShape = def?.instructions.find((i) => i.type === 'shape');
+        expect(innerShape && 'fill' in innerShape ? innerShape.fill : undefined).toBeNull();
+    });
+});
+
+const markersOf = (doc: ReturnType<typeof parseSvgDocument>) =>
+    doc.instructions.filter((i) => i.type === 'marker');
+
+describe('parseSvgDocument (markers)', () => {
+    it('emits a marker instruction per vertex for marker-start/-mid/-end', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><marker id="m" markerWidth="4" markerHeight="4"><circle cx="2" cy="2" r="2"/></marker></defs><path d="M0,0 L50,0 L50,50" marker-start="url(#m)" marker-mid="url(#m)" marker-end="url(#m)"/></svg>',
+        );
+        const markers = markersOf(doc);
+        expect(markers).toHaveLength(3);
+        expect(markers.every((m) => m.markerId === 'm')).toBe(true);
+        expect(doc.markers.get('m')).toBeDefined();
+    });
+
+    it('supports the `marker` shorthand for all three positions', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><marker id="m" markerWidth="4" markerHeight="4"><circle cx="2" cy="2" r="2"/></marker></defs><line x1="0" y1="0" x2="10" y2="0" marker="url(#m)"/></svg>',
+        );
+        expect(markersOf(doc)).toHaveLength(2);
+    });
+
+    it('lets an explicit marker-mid="none" override the `marker` shorthand for just that position', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><marker id="m" markerWidth="4" markerHeight="4"><circle cx="2" cy="2" r="2"/></marker></defs><path d="M0,0 L10,0 L20,0" marker="url(#m)" marker-mid="none"/></svg>',
+        );
+        expect(markersOf(doc)).toHaveLength(2);
+        expect(markersOf(doc).every((m) => m.markerId === 'm')).toBe(true);
+    });
+
+    it('does not emit markers for a <rect>/<circle>/<ellipse> (not marker-eligible per spec)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><marker id="m" markerWidth="4" markerHeight="4"><circle cx="2" cy="2" r="2"/></marker></defs><rect width="10" height="10" marker-start="url(#m)"/></svg>',
+        );
+        expect(markersOf(doc)).toHaveLength(0);
+    });
+
+    it('warns and skips a marker reference that does not resolve to a <marker>', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><line x1="0" y1="0" x2="10" y2="0" marker-start="url(#missing)"/></svg>',
+        );
+        expect(markersOf(doc)).toHaveLength(0);
+        expect(doc.warnings.some((w) => w.includes('marker reference'))).toBe(true);
+    });
+
+    it('resolves markerUnits to scale strokeWidth by default, or 1 for userSpaceOnUse', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><marker id="a" markerWidth="4" markerHeight="4"><circle cx="2" cy="2" r="2"/></marker><marker id="b" markerWidth="4" markerHeight="4" markerUnits="userSpaceOnUse"><circle cx="2" cy="2" r="2"/></marker></defs><line x1="0" y1="0" x2="10" y2="0" stroke-width="3" marker-start="url(#a)" marker-end="url(#b)"/></svg>',
+        );
+        const markers = markersOf(doc);
+        const start = markers.find((m) => m.type === 'marker' && m.markerId === 'a');
+        const end = markers.find((m) => m.type === 'marker' && m.markerId === 'b');
+        expect(start && 'scale' in start ? start.scale : undefined).toBe(3);
+        expect(end && 'scale' in end ? end.scale : undefined).toBe(1);
+    });
+
+    it('inherits attributes and content from another <marker> via href', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><marker id="base" markerWidth="5" markerHeight="5" orient="auto"><circle cx="2" cy="2" r="2"/></marker><marker id="m" href="#base" refX="1" refY="1"/></defs><line x1="0" y1="0" x2="10" y2="0" marker-start="url(#m)"/></svg>',
+        );
+        const def = doc.markers.get('m');
+        expect(def?.markerWidth).toBe(5);
+        expect(def?.refX).toBe(1);
+        expect(def?.orient).toBe('auto');
+        expect(def?.instructions.some((i) => i.type === 'shape')).toBe(true);
+    });
+
+    it('warns and skips a marker that references itself (a reference cycle)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><marker id="m" markerWidth="4" markerHeight="4"><line x1="0" y1="0" x2="1" y2="1" marker-start="url(#m)"/></marker></defs><line x1="0" y1="0" x2="10" y2="0" marker-start="url(#m)"/></svg>',
+        );
+        expect(doc.warnings.some((w) => w.includes('forms a cycle'))).toBe(true);
     });
 });
 
@@ -802,10 +929,10 @@ describe.skipIf(!hasFixtures)('parseSvgDocument (real-world-shaped fixtures)', (
         expect(doc.height).toBe(600);
         expect(shapesOf(doc).length).toBeGreaterThan(0);
         expect(doc.warnings.some((w) => w.startsWith('filter='))).toBe(true);
-        // Gradients/clip-path/<text>/<style> class rules here are now supported; only <pattern> and <textPath> still warn.
+        // Gradients/patterns/clip-path/<text>/<style> class rules here are now supported; only <textPath> still warns.
         expect(doc.warnings.some((w) => w.includes('gradient reference'))).toBe(false);
         expect(doc.warnings.some((w) => w.startsWith('clip-path='))).toBe(false);
-        expect(doc.warnings.some((w) => w.includes('pattern reference'))).toBe(true);
+        expect(doc.warnings.some((w) => w.includes('pattern reference'))).toBe(false);
         expect(doc.warnings.some((w) => w.includes('textPath'))).toBe(true);
         // @keyframes is an at-rule (stripped entirely, not a selector) — shouldn't produce an "unsupported selector" warning.
         expect(doc.warnings.some((w) => w.includes('<style> selector'))).toBe(false);
@@ -820,6 +947,7 @@ describe.skipIf(!hasFixtures)('parseSvgDocument (real-world-shaped fixtures)', (
             fill: { r: 51, g: 51, b: 51 },
         });
         expect(doc.gradients.size).toBeGreaterThan(0);
+        expect(doc.patterns.size).toBeGreaterThan(0);
         expect(doc.instructions.some((i) => i.type === 'pushClip')).toBe(true);
         expect(doc.instructions.some((i) => i.type === 'text')).toBe(true);
     });

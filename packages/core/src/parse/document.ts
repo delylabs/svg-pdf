@@ -4,8 +4,20 @@ import { IDENTITY_MATRIX, parseFloats } from '../geometry/matrix';
 import type { GradientDef } from '../style/gradient';
 import { DEFAULT_PAINT, resolvePaint } from '../style/paint';
 import { parseStyleRules } from '../style/stylesheet';
-import type { ParsedSvgDocument, ParsedSvgSize, SvgInstruction } from '../types';
-import { buildIdMap, walkNode, type WalkContext } from './walk';
+import type {
+    MarkerDef,
+    ParsedSvgDocument,
+    ParsedSvgSize,
+    PatternDef,
+    SvgInstruction,
+} from '../types';
+import {
+    buildIdMap,
+    resolveMarkerDef,
+    resolvePatternDef,
+    walkNode,
+    type WalkContext,
+} from './walk';
 
 const FALLBACK_SIZE = 100;
 
@@ -108,21 +120,31 @@ export const parseSvgDocument = (svgText: string): ParsedSvgDocument => {
     const instructions: SvgInstruction[] = [];
     const idMap = buildIdMap(root);
     const gradients = new Map<string, GradientDef>();
+    const patterns = new Map<string, PatternDef>();
+    const markers = new Map<string, MarkerDef>();
     const cssRules = parseStyleRules(root, warnings);
 
-    // Icon libraries commonly set fill/stroke on the <svg> root itself, not per-shape.
+    /*
+     * Icon libraries commonly set fill/stroke on the <svg> root itself, not per-shape.
+     * `resolvePattern`/`resolveMarker` close over `rootCtx` itself (assigned below) —
+     * safe since they're only ever called later, during the walk, never during this construction.
+     */
     const rootCtx: WalkContext = {
         idMap,
         warnings,
         instructions,
         visitedUseIds: new Set(),
         gradients,
+        patterns,
+        markers,
         cssRules,
+        resolvePattern: (el: Element) => resolvePatternDef(el, rootCtx),
+        resolveMarker: (el: Element) => resolveMarkerDef(el, rootCtx),
     };
     const rootPaint = resolvePaint(root, DEFAULT_PAINT, rootCtx);
     for (const child of Array.from(root.children)) {
         walkNode(child, rootPaint, rootCtx, IDENTITY_MATRIX);
     }
 
-    return { ...size, instructions, warnings, gradients };
+    return { ...size, instructions, warnings, gradients, patterns, markers };
 };

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 100">
+  <defs>
+    <pattern id="dots-uso" width="20" height="20" patternUnits="userSpaceOnUse">
+      <rect width="20" height="20" fill="#f0f0f0"/>
+      <circle cx="10" cy="10" r="7" fill="#2255aa"/>
+    </pattern>
+    <pattern id="dots-obb" width="0.2" height="0.25">
+      <rect width="1" height="1" fill="#eeeeee"/>
+      <circle cx="0.5" cy="0.5" r="0.35" fill="#aa3322"/>
+    </pattern>
+    <pattern id="stripes-base" width="12" height="12" patternUnits="userSpaceOnUse">
+      <rect width="12" height="12" fill="#ffffff"/>
+      <rect width="6" height="12" fill="#33aa55"/>
+    </pattern>
+    <pattern id="stripes" href="#stripes-base" x="4" y="0"/>
+  </defs>
+  <rect x="0" y="0" width="90" height="100" fill="url(#dots-uso)"/>
+  <rect x="105" y="0" width="90" height="100" fill="url(#dots-obb)"/>
+  <rect x="210" y="0" width="90" height="100" fill="url(#stripes)"/>
+</svg>

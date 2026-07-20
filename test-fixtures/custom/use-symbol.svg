@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 100">
+  <defs>
+    <circle id="dot" cx="0" cy="0" r="18"/>
+    <g id="pair">
+      <rect x="-15" y="-15" width="30" height="30" fill="#22aa66"/>
+      <circle cx="15" cy="15" r="10" fill="#aa2266"/>
+    </g>
+    <symbol id="badge" viewBox="0 0 10 10">
+      <rect x="0" y="0" width="10" height="10" fill="#eeeeee"/>
+      <path d="M2,8 L5,2 L8,8 Z" fill="#cc6600"/>
+    </symbol>
+  </defs>
+  <use href="#dot" x="30" y="30" fill="#2266cc"/>
+  <use href="#dot" x="30" y="70" fill="#cc2222"/>
+  <use href="#pair" x="120" y="50" transform="rotate(15 120 50)"/>
+  <use href="#badge" x="200" y="10" width="80" height="80"/>
+  <use href="#badge" x="260" y="55" width="40" height="40"/>
+</svg>

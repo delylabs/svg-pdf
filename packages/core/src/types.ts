@@ -2,6 +2,8 @@ import type { BBoxRect } from './geometry/bbox';
 import type { Matrix2D } from './geometry/matrix';
 import type { RgbColor } from './style/color';
 import type { GradientDef } from './style/gradient';
+import type { MarkerOrient, MarkerUnits, MarkerViewBox } from './style/marker';
+import type { PatternUnits } from './style/pattern';
 
 // --- Document parsing (viewBox / natural size) ---------------------------
 
@@ -67,7 +69,17 @@ export interface GradientPaintRef {
     readonly gradientId: string;
 }
 
-export type Paint = RgbColor | GradientPaintRef | null;
+/*
+ * A fill/stroke that resolved to `url(#id)` pointing at a <pattern> with a
+ * positive width/height (a 0-size pattern renders nothing, per spec, so
+ * never produces this variant — see `resolvePatternDef` in `parse/walk.ts`).
+ */
+export interface PatternPaintRef {
+    readonly kind: 'pattern';
+    readonly patternId: string;
+}
+
+export type Paint = RgbColor | GradientPaintRef | PatternPaintRef | null;
 
 export type TextAnchor = 'start' | 'middle' | 'end';
 
@@ -179,6 +191,28 @@ export interface ImageInstruction {
     readonly opacity: number;
 }
 
+/*
+ * One marker-start/-mid/-end placement along a path/line/polyline/polygon —
+ * see `computeMarkerVertices` (geometry/markerVertices.ts) for how vertex
+ * position/tangent angle are derived, and `resolveMarkerDef`/the `<marker>`
+ * placement code in `parse/walk.ts` for how `angle`/`scale` fold in the
+ * marker's own `orient`/`markerUnits`. `x`/`y`/`angle` are in the referencing
+ * shape's own local (pre-transform) space, same as `ShapeInstruction.d` —
+ * an adapter draws a marker exactly where it draws the shape's path, under
+ * the same ambient transform, no separate matrix needed (unlike gradients/
+ * patterns — a marker is painted as an ordinary positioned XObject, not a
+ * fill/stroke paint anchored to the page's absolute space).
+ */
+export interface MarkerInstruction {
+    readonly type: 'marker';
+    readonly markerId: string;
+    readonly x: number;
+    readonly y: number;
+    readonly angle: number;
+    // Already resolved from the marker's markerUnits: the referencing shape's strokeWidth, or 1 for userSpaceOnUse.
+    readonly scale: number;
+}
+
 export type SvgInstruction =
     | { readonly type: 'pushMatrix'; readonly matrix: Matrix2D }
     | { readonly type: 'popMatrix' }
@@ -186,10 +220,50 @@ export type SvgInstruction =
     | { readonly type: 'popClip' }
     | ShapeInstruction
     | TextInstruction
-    | ImageInstruction;
+    | ImageInstruction
+    | MarkerInstruction;
+
+/*
+ * A resolved <pattern>'s tile geometry plus its content, already walked into
+ * the same flat instruction list shapes/groups/text/images use elsewhere in
+ * this file — see `resolvePatternDef` in `parse/walk.ts` for how it's built,
+ * and `@delylabs/plotify-libpdf`'s pattern module for how a PDF adapter turns
+ * it into an actual tiling pattern (a real library constraint scopes which of
+ * these instruction types it can honor inside a pattern cell — not every
+ * adapter needs to support the same subset core parses here).
+ */
+export interface PatternDef {
+    readonly patternUnits: PatternUnits;
+    readonly patternContentUnits: PatternUnits;
+    // In patternUnits space (a 0-1 fraction of the referencing shape's bbox for the objectBoundingBox default, or absolute for userSpaceOnUse).
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+    readonly patternTransform: Matrix2D;
+    readonly instructions: readonly SvgInstruction[];
+}
+
+/*
+ * A resolved <marker>'s geometry (viewport size/units, reference point,
+ * default orientation) plus its content, walked the same way `PatternDef`'s
+ * is — see `resolveMarkerDef` in `parse/walk.ts`.
+ */
+export interface MarkerDef {
+    readonly refX: number;
+    readonly refY: number;
+    readonly markerWidth: number;
+    readonly markerHeight: number;
+    readonly markerUnits: MarkerUnits;
+    readonly orient: MarkerOrient;
+    readonly viewBox: MarkerViewBox | null;
+    readonly instructions: readonly SvgInstruction[];
+}
 
 export interface ParsedSvgDocument extends ParsedSvgSize {
     readonly instructions: SvgInstruction[];
     readonly warnings: string[];
     readonly gradients: ReadonlyMap<string, GradientDef>;
+    readonly patterns: ReadonlyMap<string, PatternDef>;
+    readonly markers: ReadonlyMap<string, MarkerDef>;
 }

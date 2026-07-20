@@ -1,4 +1,12 @@
-import { measureText, ops, PDF as LibPDF, PdfArray, type PdfRef, PdfStream } from '@libpdf/core';
+import {
+    measureText,
+    ops,
+    PDF as LibPDF,
+    PdfArray,
+    type PdfDict,
+    type PdfRef,
+    PdfStream,
+} from '@libpdf/core';
 import * as fs from 'fs';
 import * as path from 'path';
 import { describe, expect, it, vi } from 'vitest';
@@ -19,6 +27,34 @@ const getPageContentText = (doc: ReturnType<typeof LibPDF.create>, pageIndex: nu
         .map((ref) => doc.getObject(ref as PdfRef) as PdfStream)
         .map((stream) => new TextDecoder('latin1').decode(stream.getDecodedData()))
         .join('\n');
+};
+
+// Decodes the content stream of a named pattern resource (as registered in the page's /Resources /Pattern dict) — mirrors getPageContentText, but for a pattern's own private stream rather than the page's.
+const getPatternContentText = (
+    doc: ReturnType<typeof LibPDF.create>,
+    pageIndex: number,
+    patternName: string,
+): string => {
+    const page = doc.getPages()[pageIndex];
+    const resources = page.dict.get('Resources') as PdfDict;
+    const patternDict = resources.get('Pattern') as PdfDict;
+    const patternRef = patternDict.get(patternName) as PdfRef;
+    const patternStream = doc.getObject(patternRef) as PdfStream;
+    return new TextDecoder('latin1').decode(patternStream.getDecodedData());
+};
+
+// Same idea as getPatternContentText, but for a Form XObject (/Resources /XObject) — used by <marker>.
+const getXObjectContentText = (
+    doc: ReturnType<typeof LibPDF.create>,
+    pageIndex: number,
+    xobjectName: string,
+): string => {
+    const page = doc.getPages()[pageIndex];
+    const resources = page.dict.get('Resources') as PdfDict;
+    const xobjectDict = resources.get('XObject') as PdfDict;
+    const xobjectRef = xobjectDict.get(xobjectName) as PdfRef;
+    const xobjectStream = doc.getObject(xobjectRef) as PdfStream;
+    return new TextDecoder('latin1').decode(xobjectStream.getDecodedData());
 };
 
 describe('embedSvgInPdf', () => {
@@ -179,6 +215,125 @@ describe('embedSvgInPdf', () => {
         expect(content).toMatch(/\/Pattern\s+cs/);
         expect(content).toMatch(/\/P\d+\s+scn/);
         expect(content).not.toMatch(/1 0 0 rg/);
+    });
+
+    it('fills a <pattern>-referencing shape with a tiling pattern whose cell draws the pattern content', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 100 100"><defs><pattern id="p" width="10" height="10" patternUnits="userSpaceOnUse"><circle cx="5" cy="5" r="5" fill="#ff0000"/></pattern></defs><rect width="100" height="100" fill="url(#p)"/></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        expect(content).toMatch(/\/Pattern\s+cs/);
+        const match = content.match(/\/(P\d+)\s+scn/);
+        expect(match).not.toBeNull();
+        const patternContent = getPatternContentText(doc, 0, match![1]);
+        // The pattern cell's own content stream draws the circle with its solid fill color, via a real path-construction + fill operator (not just a reference to something else).
+        expect(patternContent).toMatch(/1 0 0 rg/);
+        expect(patternContent).toMatch(/\bf\b/);
+    });
+
+    it("positions an objectBoundingBox (default) pattern tile using the filled shape's bbox", async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 100 100"><defs><pattern id="p" width="0.5" height="0.5"><rect width="1" height="1" fill="#00ff00"/></pattern></defs><rect x="10" y="10" width="40" height="40" fill="url(#p)"/></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        expect(content).toMatch(/\/Pattern\s+cs/);
+    });
+
+    it('warns and falls back to no fill for a pattern reached through a rotated transform', async () => {
+        const doc = LibPDF.create();
+        const result = await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 100 100"><defs><pattern id="p" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="#ff0000"/></pattern></defs><g transform="rotate(45)"><rect width="100" height="100" fill="url(#p)"/></g></svg>',
+            rotation: 0,
+        });
+        expect(result.warnings.some((w) => w.includes('rotated or skewed'))).toBe(true);
+        const content = getPageContentText(doc, 0);
+        expect(content).not.toMatch(/\/Pattern\s+cs/);
+    });
+
+    it('warns and skips unsupported content (e.g. <image>) inside a <pattern> cell, but still draws the rest', async () => {
+        const doc = LibPDF.create();
+        const result = await embedSvgInPdf(doc, {
+            svgText: `<svg viewBox="0 0 100 100"><defs><pattern id="p" width="10" height="10" patternUnits="userSpaceOnUse"><image href="${ONE_PIXEL_PNG_DATA_URI}" width="10" height="10"/><circle cx="5" cy="5" r="5" fill="#0000ff"/></pattern></defs><rect width="100" height="100" fill="url(#p)"/></svg>`,
+            rotation: 0,
+        });
+        expect(result.warnings.some((w) => w.includes('<image> inside <pattern> content'))).toBe(
+            true,
+        );
+        const content = getPageContentText(doc, 0);
+        const match = content.match(/\/(P\d+)\s+scn/);
+        expect(match).not.toBeNull();
+        const patternContent = getPatternContentText(doc, 0, match![1]);
+        expect(patternContent).toMatch(/0 0 1 rg/);
+    });
+
+    it('paints a Form XObject for each marker-start/-mid/-end vertex on a marked path', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 100 100"><defs><marker id="arrow" markerWidth="4" markerHeight="4" orient="auto"><path d="M0,0 L4,2 L0,4 Z" fill="#ff0000"/></marker></defs><path d="M10,10 L50,10 L50,50" stroke="#000000" fill="none" marker-start="url(#arrow)" marker-mid="url(#arrow)" marker-end="url(#arrow)"/></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        const doMatches = [...content.matchAll(/\/(Fm\d+)\s+Do/g)];
+        expect(doMatches).toHaveLength(3);
+        const xobjectContent = getXObjectContentText(doc, 0, doMatches[0][1]);
+        expect(xobjectContent).toMatch(/1 0 0 rg/);
+        expect(xobjectContent).toMatch(/\bf\b/);
+        const pushCount = (content.match(/\bq\b/g) ?? []).length;
+        const popCount = (content.match(/\bQ\b/g) ?? []).length;
+        expect(pushCount).toBe(popCount);
+    });
+
+    it('reuses one Form XObject across every vertex that references the same marker', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 100 100"><defs><marker id="dot" markerWidth="4" markerHeight="4"><circle cx="2" cy="2" r="2" fill="#0000ff"/></marker></defs><path d="M10,10 L50,10 L50,50" marker="url(#dot)"/></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        const names = new Set([...content.matchAll(/\/(Fm\d+)\s+Do/g)].map((m) => m[1]));
+        expect(names.size).toBe(1);
+    });
+
+    it('scales a marker by stroke-width for the markerUnits default, but not for userSpaceOnUse', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 100 100"><defs><marker id="a" markerWidth="4" markerHeight="4"><circle cx="2" cy="2" r="2"/></marker><marker id="b" markerWidth="4" markerHeight="4" markerUnits="userSpaceOnUse"><circle cx="2" cy="2" r="2"/></marker></defs><line x1="0" y1="0" x2="10" y2="0" stroke-width="5" marker-start="url(#a)" marker-end="url(#b)"/></svg>',
+            rotation: 0,
+        });
+        const content = getPageContentText(doc, 0);
+        // Each marker instance's placement matrix starts with pushGraphicsState + a `cm` (scale * rotate * translate) right before its `Do` — capture the `cm`'s leading (scale-dominated) component for each.
+        const cmMatches = [
+            ...content.matchAll(
+                /([-\d.]+)\s+[-\d.]+\s+[-\d.]+\s+[-\d.]+\s+[-\d.]+\s+[-\d.]+\s+cm\s+\/Fm\d+\s+Do/g,
+            ),
+        ];
+        expect(cmMatches).toHaveLength(2);
+        expect(Math.abs(parseFloat(cmMatches[0][1]))).toBeCloseTo(5);
+        expect(Math.abs(parseFloat(cmMatches[1][1]))).toBeCloseTo(1);
+    });
+
+    it('warns and skips unsupported content (e.g. <text>) inside a <marker> cell', async () => {
+        const doc = LibPDF.create();
+        const result = await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 100 100"><defs><marker id="m" markerWidth="10" markerHeight="10"><text x="0" y="5">hi</text><circle cx="5" cy="5" r="4" fill="#00ff00"/></marker></defs><line x1="0" y1="0" x2="10" y2="0" marker-start="url(#m)"/></svg>',
+            rotation: 0,
+        });
+        expect(result.warnings.some((w) => w.includes('<text> inside <marker> content'))).toBe(
+            true,
+        );
+        const content = getPageContentText(doc, 0);
+        expect(content).toMatch(/\/Fm\d+\s+Do/);
     });
 
     it('registers an ExtGState with the requested blend mode for mix-blend-mode', async () => {

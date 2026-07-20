@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 100">
+  <style>
+    rect { fill: #dddddd; stroke: #333333; stroke-width: 2; }
+    .warm { fill: #ff6633; }
+    .cool { fill: #3366ff; }
+    #special { fill: #22aa66; stroke: #114422; stroke-width: 4; }
+    circle.warm { fill: #ffaa00; }
+  </style>
+  <rect x="10" y="15" width="60" height="60"/>
+  <rect x="90" y="15" width="60" height="60" class="warm"/>
+  <rect x="170" y="15" width="60" height="60" class="cool"/>
+  <rect x="250" y="15" width="60" height="60" id="special"/>
+  <circle cx="290" cy="55" r="12" class="warm"/>
+</svg>

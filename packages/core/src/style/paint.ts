@@ -4,6 +4,7 @@ import type {
     LineCap,
     LineJoin,
     Paint,
+    PatternDef,
     ShapePaint,
     StandardFontName,
 } from '../types';
@@ -62,7 +63,16 @@ export interface PaintContext {
     readonly idMap: ReadonlyMap<string, Element>;
     readonly warnings: string[];
     readonly gradients: Map<string, GradientDef>;
+    readonly patterns: Map<string, PatternDef>;
     readonly cssRules: readonly CssRule[];
+    /*
+     * Resolving a <pattern> means walking its (possibly arbitrary) child
+     * content into an instruction list — that's `parse/walk.ts`'s job, not
+     * this module's, so it's injected here as a callback rather than
+     * importing the walker directly (which would create an import cycle,
+     * since `parse/walk.ts` already imports `resolvePaint` from here).
+     */
+    readonly resolvePattern: (el: Element) => PatternDef | null;
 }
 
 /*
@@ -165,9 +175,13 @@ export const resolvePaint = (el: Element, inherited: ShapePaint, ctx: PaintConte
                 ctx.gradients.set(refId, def);
                 return { kind: 'gradient', gradientId: refId };
             }
-            ctx.warnings.push(
-                `${name}="${trimmed}" (pattern reference) is not yet supported and was skipped`,
-            );
+            if (refEl && refId && refTag === 'pattern') {
+                const def = ctx.resolvePattern(refEl);
+                if (!def) return null;
+                ctx.patterns.set(refId, def);
+                return { kind: 'pattern', patternId: refId };
+            }
+            ctx.warnings.push(`${name}="${trimmed}" reference target not found and was skipped`);
             return null;
         }
         return parseSvgColor(trimmed);

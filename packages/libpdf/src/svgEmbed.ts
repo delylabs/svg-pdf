@@ -1,12 +1,29 @@
-import { measureText, ops, type PDF as LibPDF } from '@libpdf/core';
+import { measureText, ops, type PDF as LibPDF, type PDFFormXObject } from '@libpdf/core';
 
-import { type BlendMode, invertMatrix, type Matrix2D, parseSvgDocument } from '@delylabs/plotify';
+import {
+    type BlendMode,
+    invertMatrix,
+    type MarkerDef,
+    type Matrix2D,
+    multiplyMatrix,
+    parseSvgDocument,
+    scaleMatrix,
+    translateMatrix,
+} from '@delylabs/plotify';
+import { buildMarkerFormXObject } from './marker';
 import { normalizeImageForEmbed } from './normalizeImage';
 import { fitImageToPage, type PageOrientation, resolvePageOrientation } from './pageGeometry';
 import { resolvePaint, toPdfColor } from './paint';
 import { normalizeRotation } from './rotation';
 
 const concat = (m: Matrix2D) => ops.concatMatrix(m.a, m.b, m.c, m.d, m.e, m.f);
+
+// Same rotation convention as core's own (private) `rotateMatrix` in geometry/matrix.ts — kept local here since it's only ever needed for a marker's `orient`-derived angle, not general transform parsing.
+const rotationMatrix = (radians: number): Matrix2D => {
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    return { a: cos, b: sin, c: -sin, d: cos, e: 0, f: 0 };
+};
 
 // Counter-flips the ambient CTM's inherited Y-flip for anything (text glyphs, image XObjects) whose own "up" direction isn't transform-agnostic like a filled path is — see the doc comments at each call site.
 const FLIP_Y: Matrix2D = { a: 1, b: 0, c: 0, d: -1, e: 0, f: 0 };
@@ -100,6 +117,8 @@ export const embedSvgInPdf = async (
         instructions,
         warnings,
         gradients,
+        patterns,
+        markers,
     } = parsed;
 
     const resolvedPageSize = pageSize
@@ -163,6 +182,15 @@ export const embedSvgInPdf = async (
     // Running x-cursor for <tspan>-without-its-own-x "flow" runs (see `continuesFlow`'s doc comment in svgCodec.ts) — only read when the next 'text' instruction is actually flagged, so unrelated text blocks never leak into each other.
     let flowCursorX: number | null = null;
 
+    // A <marker>'s Form XObject only needs building once (its content never varies per vertex) — cached by id, `null` remembered too so a marker that failed to build (e.g. zero markerWidth/markerHeight) isn't retried at every vertex.
+    const markerXObjects = new Map<string, PDFFormXObject | null>();
+    const getMarkerXObject = (markerId: string, def: MarkerDef): PDFFormXObject | null => {
+        if (markerXObjects.has(markerId)) return markerXObjects.get(markerId) ?? null;
+        const xobject = buildMarkerFormXObject(def, doc, warnings);
+        markerXObjects.set(markerId, xobject);
+        return xobject;
+    };
+
     for (const instruction of instructions) {
         switch (instruction.type) {
             case 'pushMatrix':
@@ -177,17 +205,21 @@ export const embedSvgInPdf = async (
                     instruction.fill,
                     doc,
                     gradients,
+                    patterns,
                     instruction.groupMatrix,
                     rootMatrix,
                     instruction.bbox,
+                    warnings,
                 );
                 const stroke = resolvePaint(
                     instruction.stroke,
                     doc,
                     gradients,
+                    patterns,
                     instruction.groupMatrix,
                     rootMatrix,
                     instruction.bbox,
+                    warnings,
                 );
                 const hasBlendMode = instruction.blendMode !== 'Normal';
                 if (hasBlendMode) {
@@ -365,6 +397,34 @@ export const embedSvgInPdf = async (
                     opacity: instruction.opacity,
                 });
                 page.drawOperators([ops.popGraphicsState()]);
+                break;
+            }
+            case 'marker': {
+                const def = markers.get(instruction.markerId);
+                if (!def) break;
+                const xobject = getMarkerXObject(instruction.markerId, def);
+                if (!xobject) break;
+                const xobjectName = page.registerXObject(xobject);
+                /*
+                 * Painted through an ordinary cm/Do pair, so (unlike a
+                 * gradient/pattern fill) it just inherits whatever CTM the
+                 * surrounding pushMatrix instructions already established —
+                 * no groupMatrix/rootMatrix needed here, same reasoning as
+                 * why a 'shape' instruction's own `d` draws untransformed.
+                 */
+                const placementMatrix = multiplyMatrix(
+                    scaleMatrix(instruction.scale),
+                    multiplyMatrix(
+                        rotationMatrix(instruction.angle),
+                        translateMatrix(instruction.x, instruction.y),
+                    ),
+                );
+                page.drawOperators([
+                    ops.pushGraphicsState(),
+                    concat(placementMatrix),
+                    ops.paintXObject(xobjectName),
+                    ops.popGraphicsState(),
+                ]);
                 break;
             }
         }
