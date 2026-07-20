@@ -125,7 +125,7 @@ export const parseSvgDocument = (svgText: string): ParsedSvgDocument => {
     const gradients = new Map<string, GradientDef>();
     const patterns = new Map<string, PatternDef>();
     const markers = new Map<string, MarkerDef>();
-    const cssRules = parseStyleRules(root, warnings);
+    const { cssRules, fontFaces } = parseStyleRules(root, warnings);
 
     /*
      * Icon libraries commonly set fill/stroke on the <svg> root itself, not per-shape.
@@ -149,5 +149,5 @@ export const parseSvgDocument = (svgText: string): ParsedSvgDocument => {
         walkNode(child, rootPaint, rootCtx, IDENTITY_MATRIX);
     }
 
-    return { ...size, instructions, warnings, gradients, patterns, markers };
+    return { ...size, instructions, warnings, gradients, patterns, markers, fontFaces };
 };

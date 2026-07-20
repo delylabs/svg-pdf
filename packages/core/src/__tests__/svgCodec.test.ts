@@ -840,6 +840,67 @@ describe('parseSvgDocument (<style> class/id/tag rules)', () => {
     });
 });
 
+describe('parseSvgDocument (@font-face)', () => {
+    it('parses a @font-face with a data: URI src, defaulting weight/style to normal', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><style>@font-face { font-family: "CustomSans"; src: url(data:font/ttf;base64,AAAA) format("truetype"); }</style></svg>',
+        );
+        expect(doc.fontFaces).toEqual([
+            {
+                fontFamily: 'CustomSans',
+                fontWeight: 'normal',
+                fontStyle: 'normal',
+                dataUri: 'data:font/ttf;base64,AAAA',
+            },
+        ]);
+    });
+
+    it('reads explicit font-weight/font-style off a @font-face', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><style>@font-face { font-family: CustomSans; font-weight: bold; font-style: italic; src: url(data:font/ttf;base64,AAAA); }</style></svg>',
+        );
+        expect(doc.fontFaces[0].fontWeight).toBe('bold');
+        expect(doc.fontFaces[0].fontStyle).toBe('italic');
+    });
+
+    it('does not mis-split a src declaration at the ";" inside a data: URI', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><style>@font-face { font-family: CustomSans; src: url(data:font/ttf;base64,AAAA==); }</style></svg>',
+        );
+        expect(doc.fontFaces[0].dataUri).toBe('data:font/ttf;base64,AAAA==');
+    });
+
+    it('picks the first data: URI out of a multi-source src list', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><style>@font-face { font-family: CustomSans; src: url(data:font/woff2;base64,BBBB) format("woff2"), url(data:font/ttf;base64,AAAA) format("truetype"); }</style></svg>',
+        );
+        expect(doc.fontFaces[0].dataUri).toBe('data:font/woff2;base64,BBBB');
+    });
+
+    it('warns and skips a @font-face whose src has no data: URI (external-only, not auto-embedded)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><style>@font-face { font-family: CustomSans; src: url(https://example.com/font.ttf); }</style></svg>',
+        );
+        expect(doc.fontFaces).toEqual([]);
+        expect(doc.warnings.some((w) => w.includes('@font-face'))).toBe(true);
+    });
+
+    it('does not include a @font-face missing font-family or src', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><style>@font-face { src: url(data:font/ttf;base64,AAAA); }</style></svg>',
+        );
+        expect(doc.fontFaces).toEqual([]);
+    });
+
+    it('still strips @font-face out of normal <style> rule parsing (no bogus selector warning)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><style>@font-face { font-family: CustomSans; src: url(data:font/ttf;base64,AAAA); } .big { fill: #ff0000; }</style><rect class="big" width="5" height="5"/></svg>',
+        );
+        expect(shapesOf(doc)[0].fill).toEqual({ r: 255, g: 0, b: 0 });
+        expect(doc.warnings.some((w) => w.includes('<style> selector'))).toBe(false);
+    });
+});
+
 describe('parseSvgDocument (image)', () => {
     it('parses an inline data: URI <image> with position/size', () => {
         const doc = parseSvgDocument(

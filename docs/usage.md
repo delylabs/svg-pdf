@@ -65,7 +65,7 @@ await embedSvgInPdf(doc, {
 });
 ```
 
-Fonts already embedded inline in the SVG itself (`@font-face { src: url(data:...) }`) aren't read automatically yet — only fonts supplied through `fetchFont` are embedded.
+A font declared inline in the SVG itself via `@font-face { font-family: "Poppins"; src: url(data:font/ttf;base64,...); }` is embedded automatically, with no `fetchFont` needed — it's already in the document, so there's nothing to fetch. If a `<text>`'s `font-family`/`font-weight`/`font-style` matches both an inline `@font-face` and what `fetchFont` would supply, the inline one wins (`fetchFont` isn't even called for it). An externally-hosted `@font-face src` (a plain URL, not `data:`) isn't fetched automatically — same reasoning as external `<image>` URLs — so use `fetchFont` for those instead.
 
 ## Using the parser standalone
 

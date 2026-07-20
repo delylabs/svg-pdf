@@ -681,6 +681,51 @@ describe('embedSvgInPdf', () => {
             const content = getPageContentText(doc, 0);
             expect(content).toMatch(/Tj/);
         });
+
+        it('embeds a font declared inline via @font-face src: url(data:...), with no fetchFont needed', async () => {
+            const doc = LibPDF.create();
+            const fontBytes = fs.readFileSync(LIBERATION_SANS_TTF);
+            const dataUri = `data:font/ttf;base64,${fontBytes.toString('base64')}`;
+            const result = await embedSvgInPdf(doc, {
+                svgText: `<svg viewBox="0 0 100 100"><style>@font-face { font-family: "CustomSans"; src: url(${dataUri}); }</style><text x="50" y="20" text-anchor="middle" font-family="CustomSans">Hi</text></svg>`,
+                rotation: 0,
+            });
+            expect(result.warnings).toEqual([]);
+            const embedded = doc.embedFont(new Uint8Array(fontBytes));
+            const expectedWidth = measureText('Hi', embedded, 16);
+            const content = getPageContentText(doc, 0);
+            const match = content.match(/1 0 0 1 (-?[\d.]+) -20 Tm/);
+            expect(match).not.toBeNull();
+            expect(Number(match![1])).toBeCloseTo(50 - expectedWidth / 2, 5);
+        });
+
+        it('prefers an inline @font-face match over fetchFont for the same family/weight/style', async () => {
+            const doc = LibPDF.create();
+            const fontBytes = fs.readFileSync(LIBERATION_SANS_TTF);
+            const dataUri = `data:font/ttf;base64,${fontBytes.toString('base64')}`;
+            const fetchFont = vi.fn(async () => {
+                throw new Error('should never be called — @font-face already matched');
+            });
+            const result = await embedSvgInPdf(doc, {
+                svgText: `<svg viewBox="0 0 100 100"><style>@font-face { font-family: "CustomSans"; src: url(${dataUri}); }</style><text x="10" y="20" font-family="CustomSans">Hi</text></svg>`,
+                rotation: 0,
+                fetchFont,
+            });
+            expect(fetchFont).not.toHaveBeenCalled();
+            expect(result.warnings).toEqual([]);
+        });
+
+        it('warns and falls back to a standard font when a @font-face src: data: URI cannot be decoded', async () => {
+            const doc = LibPDF.create();
+            const result = await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100"><style>@font-face { font-family: "CustomSans"; src: url(data:font/ttf;base64,!!!not-valid-base64!!!); }</style><text x="10" y="20" font-family="CustomSans">Hi</text></svg>',
+                rotation: 0,
+            });
+            expect(result.warnings.some((w) => w.includes('could not be decoded'))).toBe(true);
+            const content = getPageContentText(doc, 0);
+            expect(content).toMatch(/Tj/);
+        });
     });
 
     describe('image', () => {

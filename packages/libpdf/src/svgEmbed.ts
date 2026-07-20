@@ -10,6 +10,7 @@ import {
 import {
     type BlendMode,
     computeViewBoxTransform,
+    type FontFaceDef,
     invertMatrix,
     type MarkerDef,
     type Matrix2D,
@@ -58,6 +59,27 @@ const decodeDataUri = (href: string): { bytes: Uint8Array; mimeType: string } | 
 
 // Only http(s) is ever handed to `fetchImage` — a defense-in-depth check independent of whatever the caller's own fetcher does, so a malformed/unexpected href scheme (e.g. `file:`) can never reach it.
 const EXTERNAL_URL_RE = /^https?:\/\//i;
+
+/*
+ * Matches a <text> run's requested font against a parsed `@font-face` def:
+ * family compared case-insensitively (CSS itself is case-insensitive
+ * here), weight/style compared as trimmed/lowercased strings — a simple,
+ * literal match rather than real CSS font-matching (weight ranges,
+ * `font-stretch`, etc.), consistent with this codebase's "common case,
+ * not full CSS" scope everywhere else `font-weight`/`font-style` are read.
+ */
+const findFontFaceMatch = (
+    fontFaces: readonly FontFaceDef[],
+    fontFamily: string,
+    fontWeight: string,
+    fontStyle: string,
+): FontFaceDef | null =>
+    fontFaces.find(
+        (face) =>
+            face.fontFamily.toLowerCase() === fontFamily.trim().toLowerCase() &&
+            face.fontWeight.trim().toLowerCase() === fontWeight.trim().toLowerCase() &&
+            face.fontStyle.trim().toLowerCase() === fontStyle.trim().toLowerCase(),
+    ) ?? null;
 
 export interface EmbedSvgResult {
     readonly warnings: string[];
@@ -147,6 +169,7 @@ export const embedSvgInPdf = async (
         gradients,
         patterns,
         markers,
+        fontFaces,
     } = parsed;
 
     const resolvedPageSize = pageSize
@@ -230,14 +253,17 @@ export const embedSvgInPdf = async (
      * svg2pdf.js's TextChunk uses. The main loop below just looks the
      * results up instead of computing anchor offsets per run.
      *
-     * The same pass also resolves each run's actual font: if `fetchFont` is
-     * supplied, it's asked once per distinct (fontFamily, fontWeight,
-     * fontStyle) combination (cached by that key, not per instruction) for
-     * raw font bytes to embed via `doc.embedFont()`; the resulting
-     * `EmbeddedFont` is used for both measurement and drawing instead of
-     * `instruction.font`'s standard-14 fallback. A missing/failed font
-     * warns once per combination and keeps the standard-14 fallback rather
-     * than failing the whole document.
+     * The same pass also resolves each run's actual font, once per distinct
+     * (fontFamily, fontWeight, fontStyle) combination (cached by that key,
+     * not per instruction): first checked against any inline `@font-face`
+     * (`src: url(data:...)`) parsed from the SVG's own `<style>` — no I/O
+     * needed, it's already embedded in the document — then, if unmatched,
+     * asked of the caller-supplied `fetchFont`. Either source's bytes are
+     * embedded via `doc.embedFont()`, and the resulting `EmbeddedFont` is
+     * used for both measurement and drawing instead of `instruction.font`'s
+     * standard-14 fallback. A missing/failed font warns once per
+     * combination and keeps the standard-14 fallback rather than failing
+     * the whole document.
      */
     const textWidths = new WeakMap<TextInstruction, number>();
     const textAnchorOffsets = new WeakMap<TextInstruction, number>();
@@ -260,10 +286,31 @@ export const embedSvgInPdf = async (
         for (const instruction of instructions) {
             if (instruction.type !== 'text') continue;
             let font: FontInput = instruction.font;
-            if (fetchFont) {
-                const key = `${instruction.fontFamily} ${instruction.fontWeight} ${instruction.fontStyle}`;
-                if (!embeddedFontCache.has(key)) {
-                    let embedded: EmbeddedFont | null = null;
+            const key = `${instruction.fontFamily}${instruction.fontWeight}${instruction.fontStyle}`;
+            if (!embeddedFontCache.has(key)) {
+                let embedded: EmbeddedFont | null = null;
+                const fontFace = findFontFaceMatch(
+                    fontFaces,
+                    instruction.fontFamily,
+                    instruction.fontWeight,
+                    instruction.fontStyle,
+                );
+                if (fontFace) {
+                    const decoded = fontFace.dataUri ? decodeDataUri(fontFace.dataUri) : null;
+                    if (decoded) {
+                        try {
+                            embedded = doc.embedFont(decoded.bytes);
+                        } catch {
+                            warnings.push(
+                                `@font-face "${fontFace.fontFamily}" could not be embedded and was skipped; falling back to a standard font`,
+                            );
+                        }
+                    } else {
+                        warnings.push(
+                            `@font-face "${fontFace.fontFamily}" src: data: URI could not be decoded and was skipped; falling back to a standard font`,
+                        );
+                    }
+                } else if (fetchFont) {
                     try {
                         const bytes = await fetchFont({
                             fontFamily: instruction.fontFamily,
@@ -282,11 +329,11 @@ export const embedSvgInPdf = async (
                             `Font "${instruction.fontFamily}" (weight ${instruction.fontWeight}, style ${instruction.fontStyle}) could not be embedded and was skipped; falling back to a standard font`,
                         );
                     }
-                    embeddedFontCache.set(key, embedded);
                 }
-                const embedded = embeddedFontCache.get(key) ?? null;
-                if (embedded) font = embedded;
+                embeddedFontCache.set(key, embedded);
             }
+            const embedded = embeddedFontCache.get(key) ?? null;
+            if (embedded) font = embedded;
             textFonts.set(instruction, font);
             textWidths.set(instruction, measureText(instruction.text, font, instruction.fontSize));
             if (instruction.startsNewChunk) flushChunk();

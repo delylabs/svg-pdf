@@ -52,6 +52,81 @@ const parseCompoundSelector = (
     return { tag, classes, id };
 };
 
+/*
+ * `@font-face` support, scoped to the same "common case, not real CSS"
+ * philosophy as the rest of this file: only a `src: url(data:...)` (an
+ * inline-embedded font, decodable with no network access) is read — a
+ * `src` pointing only at an external URL is left for `fetchFont` to supply
+ * instead (see svgEmbed.ts), same reasoning as why `<image>` external URLs
+ * need an opt-in fetcher rather than being read automatically. Multiple
+ * `src` entries (format fallback lists) are supported by taking the first
+ * one that's a `data:` URI.
+ */
+export interface FontFaceDef {
+    readonly fontFamily: string;
+    readonly fontWeight: string;
+    readonly fontStyle: string;
+    // The first `data:` URI found in `src`, or `null` if `src` only has external URLs (or is missing) — decoding is svgEmbed.ts's job, same as `<image>` data URIs.
+    readonly dataUri: string | null;
+}
+
+const FONT_FACE_RE = /@font-face\s*\{([^{}]*)\}/g;
+const DATA_URI_IN_SRC_RE = /url\(\s*(data:[^)]*)\)/i;
+
+// Splits a `@font-face` block's declarations on `;`, but not inside `url(...)` — a `url(data:...)` commonly contains its own `;` (e.g. between the MIME type and `base64`), which a naive split would cut mid-URI.
+const splitDeclarations = (block: string): string[] => {
+    const result: string[] = [];
+    let depth = 0;
+    let current = '';
+    for (const ch of block) {
+        if (ch === '(') depth++;
+        else if (ch === ')') depth--;
+        if (ch === ';' && depth === 0) {
+            result.push(current);
+            current = '';
+        } else {
+            current += ch;
+        }
+    }
+    if (current.trim()) result.push(current);
+    return result;
+};
+
+const parseFontFaceBlock = (block: string): Map<string, string> => {
+    const result = new Map<string, string>();
+    for (const decl of splitDeclarations(block)) {
+        const [prop, ...rest] = decl.split(':');
+        if (!prop || rest.length === 0) continue;
+        result.set(prop.trim().toLowerCase(), rest.join(':').trim());
+    }
+    return result;
+};
+
+// Extracts every `@font-face` block's declarations from raw <style> text — called before `stripAtRules` discards them (rule parsing has no use for `@`-rules otherwise).
+const parseFontFaceRules = (cssText: string, warnings: string[]): FontFaceDef[] => {
+    const defs: FontFaceDef[] = [];
+    for (const match of cssText.matchAll(FONT_FACE_RE)) {
+        const declarations = parseFontFaceBlock(match[1]);
+        const fontFamily = declarations.get('font-family')?.replace(/^["']|["']$/g, '');
+        const src = declarations.get('src');
+        if (!fontFamily || !src) continue;
+        const dataUriMatch = DATA_URI_IN_SRC_RE.exec(src);
+        if (!dataUriMatch) {
+            warnings.push(
+                `@font-face "${fontFamily}" was skipped (only src: url(data:...) is read automatically; use fetchFont for externally-hosted fonts)`,
+            );
+            continue;
+        }
+        defs.push({
+            fontFamily,
+            fontWeight: declarations.get('font-weight') ?? 'normal',
+            fontStyle: declarations.get('font-style') ?? 'normal',
+            dataUri: dataUriMatch[1],
+        });
+    }
+    return defs;
+};
+
 // Removes `@media`/`@keyframes`/etc. blocks (including their nested `{ }`s) before rule parsing, tracking brace depth so nested blocks aren't cut short.
 const stripAtRules = (cssText: string): string => {
     let result = '';
@@ -80,14 +155,20 @@ const stripAtRules = (cssText: string): string => {
     return result;
 };
 
-export const parseStyleRules = (root: Element, warnings: string[]): CssRule[] => {
+export const parseStyleRules = (
+    root: Element,
+    warnings: string[],
+): { cssRules: CssRule[]; fontFaces: FontFaceDef[] } => {
     const rules: CssRule[] = [];
+    const fontFaces: FontFaceDef[] = [];
     let order = 0;
     const stack = [root];
     while (stack.length > 0) {
         const el = stack.pop()!;
         if (el.tagName?.toLowerCase() === 'style') {
-            const cssText = stripAtRules((el.textContent ?? '').replace(/\/\*[\s\S]*?\*\//g, ''));
+            const rawCssText = (el.textContent ?? '').replace(/\/\*[\s\S]*?\*\//g, '');
+            fontFaces.push(...parseFontFaceRules(rawCssText, warnings));
+            const cssText = stripAtRules(rawCssText);
             for (const match of cssText.matchAll(CSS_RULE_RE)) {
                 const [, selectorListRaw, declBlock] = match;
                 const declarations = parseInlineStyle(declBlock);
@@ -109,7 +190,7 @@ export const parseStyleRules = (root: Element, warnings: string[]): CssRule[] =>
             stack.push(...Array.from(el.children));
         }
     }
-    return rules;
+    return { cssRules: rules, fontFaces };
 };
 
 // Finds the winning declaration (if any) for `prop` on `el` across all matching rules, per the specificity/order rule documented above.

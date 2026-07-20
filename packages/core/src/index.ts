@@ -90,4 +90,6 @@ export type { PatternUnits } from './style/pattern';
 
 export type { MarkerOrient, MarkerUnits, MarkerViewBox } from './style/marker';
 
+export type { FontFaceDef } from './style/stylesheet';
+
 export { parseSvgDocument, parseSvgRoot, resolveSvgSize } from './parse/document';

@@ -4,6 +4,7 @@ import type { RgbColor } from './style/color';
 import type { GradientDef } from './style/gradient';
 import type { MarkerOrient, MarkerUnits, MarkerViewBox } from './style/marker';
 import type { PatternUnits } from './style/pattern';
+import type { FontFaceDef } from './style/stylesheet';
 
 // --- Document parsing (viewBox / natural size) ---------------------------
 
@@ -287,4 +288,5 @@ export interface ParsedSvgDocument extends ParsedSvgSize {
     readonly gradients: ReadonlyMap<string, GradientDef>;
     readonly patterns: ReadonlyMap<string, PatternDef>;
     readonly markers: ReadonlyMap<string, MarkerDef>;
+    readonly fontFaces: readonly FontFaceDef[];
 }
