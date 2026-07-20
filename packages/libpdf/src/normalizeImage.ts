@@ -16,13 +16,6 @@ const hasMagicBytes = (bytes: Uint8Array, magic: number[]): boolean =>
  * `OffscreenCanvas` (available in both the main thread and a Worker) when
  * present, `sharp` (a real Node dependency, dynamically imported so
  * browser/worker bundlers never have to resolve it) when it isn't.
- *
- * TODO: Dely PDF's original version of this also decoded TIFF by hand (via
- * UTIF.js), for its own general image-conversion tools. That branch was
- * deliberately dropped here — an SVG's inline `<image>` is realistically
- * always JPEG/PNG/WebP/GIF (design-tool exports), so pulling in a TIFF
- * decoder as a hard dependency of this adapter isn't worth it unless a real
- * SVG-with-embedded-TIFF case shows up.
  */
 export const normalizeImageForEmbed = async (
     buffer: ArrayBuffer,

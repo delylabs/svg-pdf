@@ -243,7 +243,7 @@ const arcToCubicCurves = (
  * A path `d` string reduced to only absolute moveto/lineto/curveto/closepath
  * segments — H/V/S/T expanded, arcs converted to cubic beziers, all relative
  * commands resolved to absolute coordinates. Used both for this module's own
- * bbox estimation and (via `@delylabs/plotify-libpdf`'s pattern-cell operator
+ * bbox estimation and (via `@svg-pdf/libpdf`'s pattern-cell operator
  * builder) to turn arbitrary path data into raw PDF path-construction
  * operators without a second, independent path parser.
  */

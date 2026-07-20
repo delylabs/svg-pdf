@@ -6,7 +6,7 @@ import {
     multiplyMatrix,
     scaleMatrix,
     translateMatrix,
-} from '@delylabs/plotify';
+} from '@svg-pdf/core';
 import { concat, type DrawContext } from './drawContext';
 
 // Same rotation convention as core's own (private) `rotateMatrix` in geometry/matrix.ts — kept local here since it's only ever needed for a marker's `orient`-derived angle, not general transform parsing.

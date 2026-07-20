@@ -1,6 +1,6 @@
 import { measureText, ops } from '@libpdf/core';
 
-import { pointAtLength, type TextPathInstruction } from '@delylabs/plotify';
+import { pointAtLength, type TextPathInstruction } from '@svg-pdf/core';
 import { toPdfColor } from '../resources/paint';
 import { concat, type DrawContext, FLIP_Y } from './drawContext';
 

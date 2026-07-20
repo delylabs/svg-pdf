@@ -3,12 +3,12 @@
   <rect x="2%" y="2%" width="96%" height="96%" fill="none" stroke="purple" stroke-width="2" stroke-dasharray="6 3"/>
   <text x="20" y="40" font-size="18" fill="purple">textPath: pathLength, startOffset, textLength, lengthAdjust</text>
   <text font-size="26" dominant-baseline="middle">
-    <textPath xlink:href="#wave" fill="crimson" text-anchor="start" startOffset="0%" textLength="120" lengthAdjust="spacingAndGlyphs">Plotify renders text along paths</textPath>
+    <textPath xlink:href="#wave" fill="crimson" text-anchor="start" startOffset="0%" textLength="120" lengthAdjust="spacingAndGlyphs">svg-pdf renders text along paths</textPath>
   </text>
   <text font-size="26" dominant-baseline="middle">
-    <textPath xlink:href="#wave" fill="darkgreen" text-anchor="middle" startOffset="50%" textLength="120" lengthAdjust="spacingAndGlyphs">Plotify renders text along paths</textPath>
+    <textPath xlink:href="#wave" fill="darkgreen" text-anchor="middle" startOffset="50%" textLength="120" lengthAdjust="spacingAndGlyphs">svg-pdf renders text along paths</textPath>
   </text>
   <text font-size="26" dominant-baseline="middle">
-    <textPath xlink:href="#wave" fill="darkorange" text-anchor="end" startOffset="90" textLength="120" lengthAdjust="spacingAndGlyphs">Plotify renders text along paths</textPath>
+    <textPath xlink:href="#wave" fill="darkorange" text-anchor="end" startOffset="90" textLength="120" lengthAdjust="spacingAndGlyphs">svg-pdf renders text along paths</textPath>
   </text>
 </svg>

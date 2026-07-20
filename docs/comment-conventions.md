@@ -1,6 +1,6 @@
 # Code Comment Conventions
 
-This document summarizes the rules for writing comments across the Plotify project. Some of these rules are checked automatically — see the [Automated tooling](#automated-tooling-npm-run-lintcomments) section below.
+This document summarizes the rules for writing comments across the svg-pdf project. Some of these rules are checked automatically — see the [Automated tooling](#automated-tooling-npm-run-lintcomments) section below.
 
 **Reference source**: [TypeScript Style Guide — Comments & Documentation](https://ts.dev/style/#comments-documentation) (the TypeScript team's own official guide). The rules below are this project's application of that guide's principles, not rules invented independently.
 

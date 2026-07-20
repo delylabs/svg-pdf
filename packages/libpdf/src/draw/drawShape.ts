@@ -1,6 +1,6 @@
 import { ops } from '@libpdf/core';
 
-import { computePathBBox, type Matrix2D, type ShapeInstruction } from '@delylabs/plotify';
+import { computePathBBox, type Matrix2D, type ShapeInstruction } from '@svg-pdf/core';
 import { resolvePaint } from '../resources/paint';
 import { type DrawContext } from './drawContext';
 

@@ -1,5 +1,5 @@
 /*
- * Manual visual-check tool: renders SVG files through Plotify exactly the
+ * Manual visual-check tool: renders SVG files through svg-pdf exactly the
  * way the library does, so you can open the resulting PDFs yourself and
  * judge them with your own eyes instead of trusting only the automated
  * pixel-diff test suite (whose tolerance can mask small positional bugs —
@@ -15,7 +15,7 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { PDF as LibPDF } from '@libpdf/core';
-import { embedSvgInPdf } from '@delylabs/plotify-libpdf';
+import { embedSvgInPdf } from '@svg-pdf/libpdf';
 
 const FIXTURES_DIR = path.join(import.meta.dirname, '../test-fixtures/custom');
 const DEFAULT_OUT_DIR = path.join(import.meta.dirname, '../test-fixtures/rendered');

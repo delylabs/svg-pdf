@@ -1,6 +1,6 @@
 import { ops } from '@libpdf/core';
 
-import type { NormalizedPathSegment } from '@delylabs/plotify';
+import type { NormalizedPathSegment } from '@svg-pdf/core';
 
 // Converts core's normalized (absolute M/L/C/Z) path segments into raw PDF path-construction operators — used to build a pattern cell's content, which (unlike a page) has no `PathBuilder`/`appendSvgPath` of its own to draw through (see `pattern.ts`'s module doc comment).
 export const pathSegmentsToOperators = (

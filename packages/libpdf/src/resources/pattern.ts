@@ -7,7 +7,7 @@ import {
     multiplyMatrix,
     type PatternDef,
     translateMatrix,
-} from '@delylabs/plotify';
+} from '@svg-pdf/core';
 import { appendCellInstructions } from './cellOperators';
 
 const EPSILON = 1e-6;

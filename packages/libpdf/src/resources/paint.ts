@@ -9,7 +9,7 @@ import {
     type Paint,
     type PatternDef,
     type RgbColor,
-} from '@delylabs/plotify';
+} from '@svg-pdf/core';
 import { resolvePatternFill } from './pattern';
 
 export const toPdfColor = (color: RgbColor) => rgb(color.r / 255, color.g / 255, color.b / 255);
@@ -23,7 +23,7 @@ export const toPdfColor = (color: RgbColor) => rgb(color.r / 255, color.g / 255,
  * explicitly: gradientTransform, then (for the default objectBoundingBox
  * units) a scale/translate into the shape's own bbox, then the shape's
  * accumulated group matrix, then the root viewBox-to-page matrix — see
- * `@delylabs/plotify`'s `ShapeInstruction` doc.
+ * `@svg-pdf/core`'s `ShapeInstruction` doc.
  */
 const buildPatternMatrix = (
     gradientDef: GradientDef,

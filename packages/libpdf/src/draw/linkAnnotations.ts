@@ -1,6 +1,6 @@
 import { type PDFPage } from '@libpdf/core';
 
-import { type BBoxRect, type Matrix2D } from '@delylabs/plotify';
+import { type BBoxRect, type Matrix2D } from '@svg-pdf/core';
 
 const transformPoint = (m: Matrix2D, x: number, y: number): { x: number; y: number } => ({
     x: m.a * x + m.c * y + m.e,

@@ -1,6 +1,6 @@
 import { ops } from '@libpdf/core';
 
-import { type Matrix2D, type TextInstruction } from '@delylabs/plotify';
+import { type Matrix2D, type TextInstruction } from '@svg-pdf/core';
 import { toPdfColor } from '../resources/paint';
 import { concat, type DrawContext, FLIP_Y } from './drawContext';
 

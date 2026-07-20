@@ -11,7 +11,7 @@
   <!--=  See http://www.w3.org/Consortium/Legal/.                          =-->
   <!--======================================================================-->
   <!--
-    NOT expected to render correctly with Plotify: <mask> is a known permanent
+    NOT expected to render correctly with svg-pdf: <mask> is a known permanent
     limitation (also blocked by @libpdf/core itself, see README). Kept as a
     regression fixture to confirm masked content still degrades gracefully
     (drawn unmasked, with a warning) instead of throwing or being dropped.

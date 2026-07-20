@@ -1,6 +1,6 @@
 import { ops } from '@libpdf/core';
 
-import { type ImageInstruction, type Matrix2D } from '@delylabs/plotify';
+import { type ImageInstruction, type Matrix2D } from '@svg-pdf/core';
 import { normalizeImageForEmbed } from '../normalizeImage';
 import { decodeDataUri, EXTERNAL_URL_RE } from './dataUri';
 import { concat, type DrawContext, FLIP_Y } from './drawContext';

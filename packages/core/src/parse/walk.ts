@@ -193,7 +193,7 @@ export function walkNode(
      * inline `data:` URI or an external URL, since fetching policy (whether
      * to fetch at all, timeouts, allowlists) is an adapter/caller concern,
      * not a parsing one. Actual decode (and any fetch) happens in the
-     * adapter (e.g. `@delylabs/plotify-libpdf`'s `draw/drawImage.ts`).
+     * adapter (e.g. `@svg-pdf/libpdf`'s `draw/drawImage.ts`).
      */
     if (tag === 'image') {
         const href = el.getAttribute('href') ?? el.getAttribute('xlink:href');
@@ -242,7 +242,7 @@ export function walkNode(
      * referencing element's own clip-path.
      *
      * Scope limit: width/height must be explicit numbers here. Per spec they
-     * default to 100% of the *parent* viewport when absent, but Plotify
+     * default to 100% of the *parent* viewport when absent, but svg-pdf
      * doesn't track a live "current viewport size" for percentage resolution
      * anywhere else in the codebase (the root <svg>'s own width/height
      * fallback in `resolveSvgSize` is a one-time computation, not something

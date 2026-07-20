@@ -8,7 +8,7 @@ import {
     multiplyMatrix,
     scaleMatrix,
     translateMatrix,
-} from '@delylabs/plotify';
+} from '@svg-pdf/core';
 import { appendCellInstructions } from './cellOperators';
 
 const concat = (m: Matrix2D) => ops.concatMatrix(m.a, m.b, m.c, m.d, m.e, m.f);

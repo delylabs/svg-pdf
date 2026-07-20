@@ -8,7 +8,7 @@ Per W3C's own policy page (https://www.w3.org/Consortium/Legal/2008/04-testsuite
 "The choice of license is up to the licensee for every single use of tests
 from a W3C Test Suite."
 
-Plotify elects the W3C 3-clause BSD License
+svg-pdf elects the W3C 3-clause BSD License
 (https://www.w3.org/copyright/3-clause-bsd-license-2008/) for these files:
 
   Redistribution and use in source and binary forms, with or without

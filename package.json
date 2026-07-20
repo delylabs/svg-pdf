@@ -1,5 +1,5 @@
 {
-    "name": "plotify",
+    "name": "svg-pdf",
     "private": true,
     "type": "module",
     "workspaces": [

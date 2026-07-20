@@ -10,7 +10,7 @@ import {
     parseSvgDocument,
     scaleMatrix,
     translateMatrix,
-} from '@delylabs/plotify';
+} from '@svg-pdf/core';
 import { concat, type DrawContext } from './draw/drawContext';
 import { drawImage } from './draw/drawImage';
 import { drawMarker } from './draw/drawMarker';
@@ -39,7 +39,7 @@ export type FetchFont = (query: {
 /**
  * Embeds an SVG as a genuine PDF vector graphic (not a rasterized image) —
  * every shape becomes real PDF path-fill/stroke operators, so it stays sharp
- * at any zoom level. See `@delylabs/plotify-core` for what SVG features are parsed.
+ * at any zoom level. See `@svg-pdf/core` for what SVG features are parsed.
  *
  * Positioning works by pushing one root matrix that maps the SVG's viewBox
  * straight onto the page's fitted/centered draw box (scale + Y-flip + origin

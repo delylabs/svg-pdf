@@ -1,11 +1,6 @@
 import { lineCapToNumber, lineJoinToNumber, ops } from '@libpdf/core';
 
-import {
-    normalizePathData,
-    type Paint,
-    type RgbColor,
-    type SvgInstruction,
-} from '@delylabs/plotify';
+import { normalizePathData, type Paint, type RgbColor, type SvgInstruction } from '@svg-pdf/core';
 import { pathSegmentsToOperators } from './pathOperators';
 
 const concat = (m: { a: number; b: number; c: number; d: number; e: number; f: number }) =>

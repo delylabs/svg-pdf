@@ -1,6 +1,6 @@
 # File & Folder Naming Conventions
 
-This document summarizes the file and folder naming rules across the Plotify project. The core principle: **casing follows a file's role, not its folder's location.** A folder can contain a mix of naming styles, as long as each file follows the rule for its own kind.
+This document summarizes the file and folder naming rules across the svg-pdf project. The core principle: **casing follows a file's role, not its folder's location.** A folder can contain a mix of naming styles, as long as each file follows the rule for its own kind.
 
 ---
 

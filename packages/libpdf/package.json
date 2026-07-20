@@ -1,5 +1,5 @@
 {
-    "name": "@delylabs/plotify-libpdf",
+    "name": "@svg-pdf/libpdf",
     "version": "0.0.0",
     "license": "MIT",
     "type": "module",
@@ -9,7 +9,7 @@
         ".": "./src/index.ts"
     },
     "dependencies": {
-        "@delylabs/plotify": "*",
+        "@svg-pdf/core": "*",
         "@libpdf/core": "^0.4.1",
         "sharp": "^0.33.0"
     }

@@ -11,7 +11,7 @@
   <!--=  See http://www.w3.org/Consortium/Legal/.                          =-->
   <!--======================================================================-->
   <!--
-    NOT expected to render correctly with Plotify: filter="url(#...)" is a
+    NOT expected to render correctly with svg-pdf: filter="url(#...)" is a
     genuine PDF vector limitation (see README), and this test also nests it
     inside a <mask> (itself unsupported). Kept as a regression fixture to
     confirm both degrade gracefully (warned and skipped) rather than crashing.

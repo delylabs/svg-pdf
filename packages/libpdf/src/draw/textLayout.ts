@@ -1,6 +1,6 @@
 import { type EmbeddedFont, type FontInput, measureText, type PDF as LibPDF } from '@libpdf/core';
 
-import { type FontFaceDef, type SvgInstruction, type TextInstruction } from '@delylabs/plotify';
+import { type FontFaceDef, type SvgInstruction, type TextInstruction } from '@svg-pdf/core';
 import { type FetchFont } from '../svgEmbed';
 import { decodeDataUri } from './dataUri';
 

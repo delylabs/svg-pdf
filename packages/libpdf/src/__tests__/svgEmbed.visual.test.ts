@@ -14,7 +14,7 @@ const TARGET_WIDTH = 800;
 const MAX_MISMATCH_RATIO = 0.12;
 
 /*
- * Fixtures whose root exercises an SVG feature Plotify doesn't parse yet
+ * Fixtures whose root exercises an SVG feature svg-pdf doesn't parse yet
  * (tracked in the package README's "Not yet supported" list) necessarily
  * render blank/near-blank until that gap closes — comparing them against
  * their full source SVG would always fail for a reason unrelated to

@@ -144,7 +144,7 @@ export interface ShapeInstruction extends ShapePaint {
      * gradient/pattern matrices in PDF map to the page's default space
      * regardless of the current graphics-state CTM, so the adapter needs
      * this to position a gradient correctly (see `buildPatternMatrix` in
-     * `@delylabs/plotify-libpdf`'s `resources/paint.ts`).
+     * `@svg-pdf/libpdf`'s `resources/paint.ts`).
      */
     readonly groupMatrix: Matrix2D;
     // Local bounding box, computed lazily only for objectBoundingBox-units gradient/clip.
@@ -226,7 +226,7 @@ export interface TextInstruction {
  * this module deliberately never touches — so this instruction carries
  * everything the adapter needs (already-flattened path geometry, already-
  * resolved start distance) to do that character-by-character walk itself
- * (see `@delylabs/plotify-libpdf`'s `draw/drawTextPath.ts`).
+ * (see `@svg-pdf/libpdf`'s `draw/drawTextPath.ts`).
  * `textLength`/`lengthAdjust` (glyph-spacing to fit an exact length) and
  * nested `<tspan>` children inside a `<textPath>` are out of scope — only
  * the `<textPath>` element's own direct text content is used.
@@ -328,7 +328,7 @@ export type SvgInstruction =
  * A resolved <pattern>'s tile geometry plus its content, already walked into
  * the same flat instruction list shapes/groups/text/images use elsewhere in
  * this file — see `resolvePatternDef` in `parse/pattern.ts` for how it's built,
- * and `@delylabs/plotify-libpdf`'s pattern module for how a PDF adapter turns
+ * and `@svg-pdf/libpdf`'s pattern module for how a PDF adapter turns
  * it into an actual tiling pattern (a real library constraint scopes which of
  * these instruction types it can honor inside a pattern cell — not every
  * adapter needs to support the same subset core parses here).

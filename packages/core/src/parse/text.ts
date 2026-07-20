@@ -161,7 +161,7 @@ function walkTextPathElement(el: Element, inherited: ShapePaint, ctx: WalkContex
  * below is what tells those two cases apart, so the first run after a fresh
  * position never continues from whatever unrelated text last measured
  * somewhere else. Only non-first siblings lacking their own `x` are marked
- * `continuesFlow`; the adapter (e.g. `@delylabs/plotify-libpdf`'s
+ * `continuesFlow`; the adapter (e.g. `@svg-pdf/libpdf`'s
  * `draw/drawText.ts`) resolves the actual continuation position at
  * draw time via a running cursor (it needs `measureText`, a library function
  * this module deliberately never touches). This still isn't full per-glyph
