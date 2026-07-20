@@ -815,6 +815,29 @@ describe('parseSvgDocument (<style> class/id/tag rules)', () => {
         expect(shapesOf(doc)[0].fill).toEqual({ r: 0, g: 255, b: 0 });
         expect(doc.warnings.some((w) => w.includes('<style> selector'))).toBe(true);
     });
+
+    it('applies a compound tag.class selector, requiring both to match', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><style>rect.big { fill: #ff0000; } circle.big { fill: #00ff00; }</style><rect class="big" width="5" height="5"/></svg>',
+        );
+        expect(shapesOf(doc)[0].fill).toEqual({ r: 255, g: 0, b: 0 });
+    });
+
+    it('applies a compound .a.b selector, requiring every class to be present', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><style>.a.b { fill: #ff0000; }</style><rect class="a b c" width="5" height="5"/><rect class="a" width="5" height="5"/></svg>',
+        );
+        const [first, second] = shapesOf(doc);
+        expect(first.fill).toEqual({ r: 255, g: 0, b: 0 });
+        expect(second.fill).toEqual({ r: 0, g: 0, b: 0 });
+    });
+
+    it('ranks a compound tag.class selector above a plain class selector of equal source order', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><style>rect.big { fill: #ff0000; } .big { fill: #00ff00; }</style><rect class="big" width="5" height="5"/></svg>',
+        );
+        expect(shapesOf(doc)[0].fill).toEqual({ r: 255, g: 0, b: 0 });
+    });
 });
 
 describe('parseSvgDocument (image)', () => {
