@@ -38,6 +38,21 @@ describe('parseTransformList', () => {
         expect(p.y).toBeCloseTo(1);
     });
 
+    it('rotate(angle, cx, cy) keeps the pivot point itself fixed', () => {
+        const m = parseTransformList('rotate(15 120 50)');
+        const pivot = applyMatrix(m, 120, 50);
+        expect(pivot.x).toBeCloseTo(120, 5);
+        expect(pivot.y).toBeCloseTo(50, 5);
+    });
+
+    it('rotate(90, cx, cy) rotates a point a quarter turn around that pivot', () => {
+        const m = parseTransformList('rotate(90 10 10)');
+        // (20,10) is 10 units to the right of the pivot (10,10) — a 90° turn should land it 10 units below the pivot, at (10,20).
+        const p = applyMatrix(m, 20, 10);
+        expect(p.x).toBeCloseTo(10, 5);
+        expect(p.y).toBeCloseTo(20, 5);
+    });
+
     it('applies the rightmost/innermost function first: "translate(10,0) scale(2)"', () => {
         // Nests like <g translate(10,0)><g scale(2)>point</g></g> — scale applies first.
         const m = parseTransformList('translate(10,0) scale(2)');

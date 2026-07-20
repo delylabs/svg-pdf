@@ -16,6 +16,15 @@ describe('parseSvgColor', () => {
         });
     });
 
+    it('parses hsl()/hsla()', () => {
+        expect(parseSvgColor('hsl(0, 100%, 50%)')).toEqual({ r: 255, g: 0, b: 0 });
+        expect(parseSvgColor('hsl(120, 100%, 50%)')).toEqual({ r: 0, g: 255, b: 0 });
+        expect(parseSvgColor('hsl(240, 100%, 50%)')).toEqual({ r: 0, g: 0, b: 255 });
+        expect(parseSvgColor('hsla(0, 0%, 100%, 0.5)')).toEqual({ r: 255, g: 255, b: 255 });
+        // hue wraps, saturation/lightness clamp to [0,1]
+        expect(parseSvgColor('hsl(480, 150%, -10%)')).toEqual(parseSvgColor('hsl(120, 100%, 0%)'));
+    });
+
     it('parses named CSS colors', () => {
         expect(parseSvgColor('cornflowerblue')).toEqual({
             r: 100,

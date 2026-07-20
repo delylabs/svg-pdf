@@ -16,6 +16,7 @@
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "docs:structure": "node scripts/generate-project-structure.js",
+        "render": "vite-node scripts/render-svg-to-pdf.ts --",
         "prepare": "node scripts/setup-git-hooks.js"
     },
     "devDependencies": {
@@ -33,6 +34,7 @@
         "prettier": "^3.9.5",
         "typescript": "^6.0.3",
         "typescript-eslint": "^8.64.0",
+        "vite-node": "^6.0.0",
         "vitest": "^4.1.10"
     },
     "prettier": {

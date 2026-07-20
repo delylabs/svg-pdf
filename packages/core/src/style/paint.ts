@@ -13,7 +13,7 @@ import { parseFloats } from '../geometry/matrix';
 import { CSS_NAMED_COLORS, parseSvgColor } from './color';
 import { resolveGradientDef, type GradientDef } from './gradient';
 import { URL_REF_RE } from './refs';
-import { type CssRule, readPresentation } from './stylesheet';
+import { type CssRule, readCssOnly, readPresentation } from './stylesheet';
 
 // CSS `mix-blend-mode` keyword -> PDF `BlendMode` name (same set, PDF just uses PascalCase without hyphens).
 const CSS_BLEND_MODES: Record<string, BlendMode> = {
@@ -220,13 +220,15 @@ export const resolvePaint = (el: Element, inherited: ShapePaint, ctx: PaintConte
     const fillRuleRaw = readPresentation(el, 'fill-rule', ctx.cssRules);
     const dashArrayRaw = readPresentation(el, 'stroke-dasharray', ctx.cssRules);
     const dashOffsetRaw = readPresentation(el, 'stroke-dashoffset', ctx.cssRules);
-    const blendModeRaw = readPresentation(el, 'mix-blend-mode', ctx.cssRules);
+    // `mix-blend-mode` is CSS-only, not an SVG presentation attribute — a bare `mix-blend-mode="multiply"` attribute is inert in browsers.
+    const blendModeRaw = readCssOnly(el, 'mix-blend-mode', ctx.cssRules);
     const fontSizeRaw = readPresentation(el, 'font-size', ctx.cssRules);
     const fontFamilyRaw = readPresentation(el, 'font-family', ctx.cssRules);
     const fontWeightRaw = readPresentation(el, 'font-weight', ctx.cssRules);
     const fontStyleRaw = readPresentation(el, 'font-style', ctx.cssRules);
     const textAnchorRaw = readPresentation(el, 'text-anchor', ctx.cssRules);
-    const textTransformRaw = readPresentation(el, 'text-transform', ctx.cssRules);
+    // `text-transform` is CSS-only, not an SVG presentation attribute — a bare `text-transform="uppercase"` attribute is inert in browsers.
+    const textTransformRaw = readCssOnly(el, 'text-transform', ctx.cssRules);
     const letterSpacingRaw = readPresentation(el, 'letter-spacing', ctx.cssRules);
     const wordSpacingRaw = readPresentation(el, 'word-spacing', ctx.cssRules);
     const whiteSpaceRaw = readPresentation(el, 'white-space', ctx.cssRules);

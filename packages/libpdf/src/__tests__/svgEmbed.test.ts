@@ -342,6 +342,34 @@ describe('embedSvgInPdf', () => {
             expect(content).not.toMatch(/\/Pattern\s+cs/);
         });
 
+        it('shifts pattern content by the tile x/y offset to stay aligned with the bbox instead of getting clipped by it', async () => {
+            /*
+             * Mirrors the real bug: a <pattern x="4" ...> moves where the
+             * tile's bbox sits in device space, but the content itself is
+             * still authored starting at its own local (0,0) — if the
+             * content operators aren't shifted by that same offset, they
+             * land outside (or only partially inside) the now-relocated
+             * bbox and get clipped by it, since a PDF tiling pattern's
+             * /BBox is always a hard clip.
+             */
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100"><defs><pattern id="p" width="12" height="12" patternUnits="userSpaceOnUse" x="4"><rect width="6" height="12" fill="#33aa55"/></pattern></defs><rect width="100" height="100" fill="url(#p)"/></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            const match = content.match(/\/(P\d+)\s+scn/);
+            expect(match).not.toBeNull();
+            const patternContent = getPatternContentText(doc, 0, match![1]);
+            // The content-drawing `cm` (applied once, before the rect's own local-origin path data) must carry the tile's x=4 offset in its `e` component — otherwise the rect is drawn outside the also-shifted bbox and gets clipped away.
+            const cm = patternContent.match(
+                /^([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+cm/m,
+            );
+            expect(cm).not.toBeNull();
+            expect(Number(cm![5])).toBeCloseTo(4, 5);
+        });
+
         it('warns and skips unsupported content (e.g. <image>) inside a <pattern> cell, but still draws the rest', async () => {
             const doc = LibPDF.create();
             const result = await embedSvgInPdf(doc, {
@@ -382,7 +410,7 @@ describe('embedSvgInPdf', () => {
             const doc = LibPDF.create();
             await embedSvgInPdf(doc, {
                 svgText:
-                    '<svg viewBox="0 0 100 100"><defs><marker id="dot" markerWidth="4" markerHeight="4"><circle cx="2" cy="2" r="2" fill="#0000ff"/></marker></defs><path d="M10,10 L50,10 L50,50" marker="url(#dot)"/></svg>',
+                    '<svg viewBox="0 0 100 100"><defs><marker id="dot" markerWidth="4" markerHeight="4"><circle cx="2" cy="2" r="2" fill="#0000ff"/></marker></defs><path d="M10,10 L50,10 L50,50" style="marker:url(#dot)"/></svg>',
                 rotation: 0,
             });
             const content = getPageContentText(doc, 0);
@@ -407,6 +435,51 @@ describe('embedSvgInPdf', () => {
             expect(cmMatches).toHaveLength(2);
             expect(Math.abs(parseFloat(cmMatches[0][1]))).toBeCloseTo(5);
             expect(Math.abs(parseFloat(cmMatches[1][1]))).toBeCloseTo(1);
+        });
+
+        it('clips a marker Form XObject to its markerWidth/markerHeight viewport by default', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100"><defs><marker id="m" markerWidth="1" markerHeight="1"><path d="M -1 -0.6 L 0.6 0 L -1 0.6 Z" fill="orange"/></marker></defs><line x1="0" y1="0" x2="10" y2="0" marker-start="url(#m)"/></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            const [, xobjectName] = content.match(/\/(Fm\d+)\s+Do/) ?? [];
+            const resources = doc.getPages()[0].dict.get('Resources') as PdfDict;
+            const xobjectDict = resources.get('XObject') as PdfDict;
+            const xobjectRef = xobjectDict.get(xobjectName!) as PdfRef;
+            const xobjectStream = doc.getObject(xobjectRef) as PdfStream;
+            // PDF's /BBox is [llx, lly, urx, ury] — for the 1x1 viewport at the origin this happens to equal [x, y, x+width, y+height] = [0, 0, 1, 1].
+            const bboxArray = [...(xobjectStream.get('BBox') as PdfArray)].map(
+                (n) => (n as { value: number }).value,
+            );
+            // The path's actual content (x from -1 to 0.6) extends well past the nominal 1x1 viewport — clipped to it by default (per spec, a <marker>'s content defaults to overflow: hidden).
+            expect(bboxArray).toEqual([0, 0, 1, 1]);
+        });
+
+        it('grows the Form XObject bbox to fit the actual content for overflow="visible" instead of clipping to markerWidth/markerHeight', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 100 100"><defs><marker id="m" overflow="visible" markerWidth="1" markerHeight="1"><path d="M -1 -0.6 L 0.6 0 L -1 0.6 Z" fill="orange"/></marker></defs><line x1="0" y1="0" x2="10" y2="0" marker-start="url(#m)"/></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            const [, xobjectName] = content.match(/\/(Fm\d+)\s+Do/) ?? [];
+            const resources = doc.getPages()[0].dict.get('Resources') as PdfDict;
+            const xobjectDict = resources.get('XObject') as PdfDict;
+            const xobjectRef = xobjectDict.get(xobjectName!) as PdfRef;
+            const xobjectStream = doc.getObject(xobjectRef) as PdfStream;
+            // PDF's /BBox is [llx, lly, urx, ury] (corner coordinates, not x/y/width/height).
+            const [llx, lly, urx, ury] = [...(xobjectStream.get('BBox') as PdfArray)].map(
+                (n) => (n as { value: number }).value,
+            );
+            // Must actually contain the path's real extent (x: -1 to 0.6, y: -0.6 to 0.6), not just the nominal 1x1 viewport.
+            expect(llx).toBeLessThanOrEqual(-1);
+            expect(lly).toBeLessThanOrEqual(-0.6);
+            expect(urx).toBeGreaterThanOrEqual(0.6);
+            expect(ury).toBeGreaterThanOrEqual(0.6);
         });
 
         it('warns and skips unsupported content (e.g. <text>) inside a <marker> cell', async () => {

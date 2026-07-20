@@ -26,4 +26,26 @@ describe('shape → path conversion', () => {
         const d = polygonToPathData(el('<svg><polygon points="0,0 10,0 5,10"/></svg>'));
         expect(d).toBe('M 0 0 L 10 0 L 5 10 Z');
     });
+
+    it('resolves rect %-valued x/y/width/height against a given viewport', () => {
+        const d = rectToPathData(el('<svg><rect x="2%" y="2%" width="96%" height="96%"/></svg>'), {
+            width: 200,
+            height: 100,
+        });
+        expect(d).toBe('M 4 2 H 196 V 98 H 4 Z');
+    });
+
+    it('leaves a %-valued rect at its literal numeric prefix when no viewport is given (unchanged pre-existing behavior)', () => {
+        const d = rectToPathData(el('<svg><rect x="2%" y="2%" width="96%" height="96%"/></svg>'));
+        expect(d).toBe('M 2 2 H 98 V 98 H 2 Z');
+    });
+
+    it('resolves circle %-valued cx/cy against width/height and r against the viewport diagonal', () => {
+        const d = circleToPathData(el('<svg><circle cx="50%" cy="50%" r="10%"/></svg>'), {
+            width: 200,
+            height: 100,
+        });
+        const diagonalTenth = Math.sqrt(200 ** 2 + 100 ** 2) / Math.SQRT2 / 10;
+        expect(d.startsWith(`M ${100 + diagonalTenth} 50`)).toBe(true);
+    });
 });

@@ -1,4 +1,5 @@
 import { MAX_USE_DEPTH, resolveHref } from './refs';
+import { readPresentation } from './stylesheet';
 
 export type MarkerUnits = 'strokeWidth' | 'userSpaceOnUse';
 export type MarkerOrient = number | 'auto' | 'auto-start-reverse';
@@ -24,6 +25,17 @@ export interface MarkerAttrs {
     readonly markerUnits: MarkerUnits;
     readonly orient: MarkerOrient;
     readonly viewBox: MarkerViewBox | null;
+    /*
+     * Per spec, a <marker>'s content defaults to clipped ("hidden") to its
+     * markerWidth/markerHeight viewport — `overflow="visible"` opts out of
+     * that clip, a common technique for a custom arrowhead whose path
+     * coordinates deliberately extend past a small nominal viewport (see
+     * `buildMarkerFormXObject`, which has to size the PDF Form XObject's
+     * /BBox around the actual content instead when this is true, since a PDF
+     * Form XObject's /BBox is always a hard clip — there's no PDF equivalent
+     * of "don't clip" to fall back on).
+     */
+    readonly overflowVisible: boolean;
 }
 
 const num = (raw: string | null, fallback: number): number => {
@@ -90,6 +102,10 @@ export const resolveMarkerAttrs = (
         viewBox: el.hasAttribute('viewBox')
             ? parseViewBox(el.getAttribute('viewBox'))
             : (base?.viewBox ?? null),
+        overflowVisible: (() => {
+            const raw = readPresentation(el, 'overflow');
+            return raw !== null ? raw.trim() === 'visible' : (base?.overflowVisible ?? false);
+        })(),
     };
 };
 

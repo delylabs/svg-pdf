@@ -9,7 +9,7 @@ import {
 } from '../geometry/matrix';
 import { computeMarkerVertices, type MarkerVertex } from '../geometry/markerVertices';
 import { computeViewBoxTransform } from '../geometry/viewBox';
-import { computeShapeBBox, num, shapeToPathData } from '../geometry/path';
+import { computeShapeBBox, num, type ShapeViewport, shapeToPathData } from '../geometry/path';
 import { computeCumulativeLengths, flattenPathToPolyline } from '../geometry/pathLength';
 import { CSS_NAMED_COLORS, type RgbColor } from '../style/color';
 import { findMarkerContentEl, resolveMarkerAttrs } from '../style/marker';
@@ -25,7 +25,7 @@ import {
 } from '../style/paint';
 import { findPatternContentEl, resolvePatternAttrs } from '../style/pattern';
 import { MAX_USE_DEPTH, resolveHref, URL_REF_RE } from '../style/refs';
-import { readPresentation } from '../style/stylesheet';
+import { readCssOnly, readPresentation } from '../style/stylesheet';
 import type {
     FillRule,
     MarkerDef,
@@ -39,6 +39,13 @@ export interface WalkContext extends PaintContext {
     readonly instructions: SvgInstruction[];
     readonly visitedUseIds: ReadonlySet<string>;
     readonly markers: Map<string, MarkerDef>;
+    /*
+     * The root <svg>'s viewBox size — the percentage basis for a shape's own
+     * `%`-valued geometry (`x="50%"`, etc). A nested `<svg>`/`<symbol>`
+     * establishing its own smaller viewport isn't tracked, so this stays the
+     * root's size throughout the whole walk, not the locally nested one.
+     */
+    readonly viewport: ShapeViewport;
     /*
      * Resolves a <marker> element with cycle protection scoped to the
      * *current* resolution chain — injected fresh (with an extended `visited`
@@ -151,7 +158,7 @@ const resolveClipPathFor = (el: Element, ctx: WalkContext): ResolvedClip | null 
         clipEl.getAttribute('clipPathUnits')?.toLowerCase() === 'objectboundingbox';
     let bboxMatrix: Matrix2D | null = null;
     if (isObjectBoundingBox) {
-        const bbox = computeShapeBBox(el);
+        const bbox = computeShapeBBox(el, ctx.viewport);
         if (!bbox) {
             ctx.warnings.push(
                 `clip-path="${clipPathAttr}" with clipPathUnits="objectBoundingBox" on a non-shape element is not supported and was skipped`,
@@ -180,7 +187,7 @@ const resolveClipPathFor = (el: Element, ctx: WalkContext): ResolvedClip | null 
             );
             continue;
         }
-        const d = shapeToPathData(child);
+        const d = shapeToPathData(child, ctx.viewport);
         if (d) paths.push(d);
     }
     if (paths.length === 0) return null;
@@ -229,6 +236,7 @@ export const resolvePatternDef = (
             patterns: ctx.patterns,
             markers: ctx.markers,
             cssRules: ctx.cssRules,
+            viewport: ctx.viewport,
             resolvePattern: (patternEl: Element) => resolvePatternDef(patternEl, ctx, nextVisited),
             resolveMarker: ctx.resolveMarker,
         };
@@ -275,6 +283,7 @@ export const resolveMarkerDef = (
             patterns: ctx.patterns,
             markers: ctx.markers,
             cssRules: ctx.cssRules,
+            viewport: ctx.viewport,
             resolvePattern: ctx.resolvePattern,
             resolveMarker: (markerEl: Element) => resolveMarkerDef(markerEl, ctx, nextVisited),
         };
@@ -294,9 +303,9 @@ interface ResolvedMarkerRefs {
     readonly end: string | null;
 }
 
-// `marker="url(#id)"` is shorthand for all three of marker-start/-mid/-end; an explicit longhand (including "none") on the element overrides the shorthand for that one position only.
+// `marker` (the shorthand for marker-start/-mid/-end) is CSS-only, not an SVG presentation attribute — unlike its longhands, a bare `marker="url(#id)"` attribute is inert in browsers, only `style="marker:url(#id)"`/CSS is honored.
 const resolveMarkerRefs = (el: Element, ctx: WalkContext): ResolvedMarkerRefs => {
-    const shorthand = readPresentation(el, 'marker');
+    const shorthand = readCssOnly(el, 'marker', ctx.cssRules);
     const shorthandId =
         shorthand && shorthand.trim() !== 'none' ? (URL_REF_RE.exec(shorthand)?.[1] ?? null) : null;
     const resolveOne = (propName: string): string | null => {
@@ -922,7 +931,7 @@ export function walkNode(
     }
 
     if (SHAPE_ELEMENTS.has(tag)) {
-        const d = shapeToPathData(el);
+        const d = shapeToPathData(el, ctx.viewport);
         if (!d) return;
         const resolvedPaint = resolvePaint(el, inherited, ctx);
         /*
@@ -945,7 +954,7 @@ export function walkNode(
                 def?.patternContentUnits !== 'userSpaceOnUse'
             );
         });
-        const bbox = needsBBox ? computeShapeBBox(el) : null;
+        const bbox = needsBBox ? computeShapeBBox(el, ctx.viewport) : null;
         withPush(transform, ctx, () => {
             withClip(el, ctx, () => {
                 ctx.instructions.push({

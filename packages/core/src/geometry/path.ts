@@ -3,8 +3,21 @@ import { parseFloats } from './matrix';
 
 // --- Shape → path `d` conversion -----------------------------------------
 
-export const num = (value: string | null, fallback = 0): number => {
+/*
+ * `basis` is the percentage reference for this one value (e.g. the current
+ * viewport width when reading `x`/`width`, its height for `y`/`height`) —
+ * per spec, a plain `%` string resolves against it. Left undefined at call
+ * sites with no viewport in scope (e.g. the standalone `rectToPathData(el)`
+ * calls in tests), in which case a `%` string just falls back to whatever
+ * numeric prefix `parseFloat` finds, same as before this existed.
+ */
+export const num = (value: string | null, fallback = 0, basis?: number): number => {
     if (value === null || value === '') return fallback;
+    const trimmed = value.trim();
+    if (basis !== undefined && trimmed.endsWith('%')) {
+        const pct = parseFloat(trimmed);
+        return Number.isNaN(pct) ? fallback : (pct / 100) * basis;
+    }
     const parsed = parseFloat(value);
     return Number.isNaN(parsed) ? fallback : parsed;
 };
@@ -12,13 +25,31 @@ export const num = (value: string | null, fallback = 0): number => {
 // Bézier approximation constant for a quarter circle, same technique svg2pdf.js uses.
 const KAPPA = 0.5522847498;
 
-export const rectToPathData = (el: Element): string => {
-    const x = num(el.getAttribute('x'));
-    const y = num(el.getAttribute('y'));
-    const width = num(el.getAttribute('width'));
-    const height = num(el.getAttribute('height'));
-    let rx = el.hasAttribute('rx') ? num(el.getAttribute('rx')) : null;
-    let ry = el.hasAttribute('ry') ? num(el.getAttribute('ry')) : null;
+/*
+ * The current SVG viewport a shape's own `%`-valued geometry resolves
+ * against — per spec, horizontal lengths (x/width/...) use its width,
+ * vertical ones (y/height/...) use its height, and lengths that aren't
+ * purely one or the other (a circle's `r`) use the viewport diagonal
+ * divided by √2. Only the root `<svg>`'s viewBox is threaded in as this
+ * today — a nested `<svg>`/`<symbol>` establishing its own smaller viewport
+ * for its own children isn't tracked yet, so percentages inside one still
+ * resolve against the root's, not their own local viewport.
+ */
+export interface ShapeViewport {
+    readonly width: number;
+    readonly height: number;
+}
+
+const diagonalBasis = (viewport: ShapeViewport): number =>
+    Math.sqrt(viewport.width ** 2 + viewport.height ** 2) / Math.SQRT2;
+
+export const rectToPathData = (el: Element, viewport?: ShapeViewport): string => {
+    const x = num(el.getAttribute('x'), 0, viewport?.width);
+    const y = num(el.getAttribute('y'), 0, viewport?.height);
+    const width = num(el.getAttribute('width'), 0, viewport?.width);
+    const height = num(el.getAttribute('height'), 0, viewport?.height);
+    let rx = el.hasAttribute('rx') ? num(el.getAttribute('rx'), 0, viewport?.width) : null;
+    let ry = el.hasAttribute('ry') ? num(el.getAttribute('ry'), 0, viewport?.height) : null;
     if (rx === null && ry === null) {
         return `M ${x} ${y} H ${x + width} V ${y + height} H ${x} Z`;
     }
@@ -62,26 +93,26 @@ const ellipseToPathData = (cx: number, cy: number, rx: number, ry: number): stri
     ].join(' ');
 };
 
-export const circleToPathData = (el: Element): string => {
-    const cx = num(el.getAttribute('cx'));
-    const cy = num(el.getAttribute('cy'));
-    const r = num(el.getAttribute('r'));
+export const circleToPathData = (el: Element, viewport?: ShapeViewport): string => {
+    const cx = num(el.getAttribute('cx'), 0, viewport?.width);
+    const cy = num(el.getAttribute('cy'), 0, viewport?.height);
+    const r = num(el.getAttribute('r'), 0, viewport && diagonalBasis(viewport));
     return ellipseToPathData(cx, cy, r, r);
 };
 
-export const ellipseElToPathData = (el: Element): string => {
-    const cx = num(el.getAttribute('cx'));
-    const cy = num(el.getAttribute('cy'));
-    const rx = num(el.getAttribute('rx'));
-    const ry = num(el.getAttribute('ry'));
+export const ellipseElToPathData = (el: Element, viewport?: ShapeViewport): string => {
+    const cx = num(el.getAttribute('cx'), 0, viewport?.width);
+    const cy = num(el.getAttribute('cy'), 0, viewport?.height);
+    const rx = num(el.getAttribute('rx'), 0, viewport?.width);
+    const ry = num(el.getAttribute('ry'), 0, viewport?.height);
     return ellipseToPathData(cx, cy, rx, ry);
 };
 
-export const lineToPathData = (el: Element): string => {
-    const x1 = num(el.getAttribute('x1'));
-    const y1 = num(el.getAttribute('y1'));
-    const x2 = num(el.getAttribute('x2'));
-    const y2 = num(el.getAttribute('y2'));
+export const lineToPathData = (el: Element, viewport?: ShapeViewport): string => {
+    const x1 = num(el.getAttribute('x1'), 0, viewport?.width);
+    const y1 = num(el.getAttribute('y1'), 0, viewport?.height);
+    const x2 = num(el.getAttribute('x2'), 0, viewport?.width);
+    const y2 = num(el.getAttribute('y2'), 0, viewport?.height);
     return `M ${x1} ${y1} L ${x2} ${y2}`;
 };
 
@@ -102,18 +133,18 @@ export const polygonToPathData = (el: Element): string =>
 export const polylineToPathData = (el: Element): string =>
     pointsToPathData(el.getAttribute('points'), false);
 
-export const shapeToPathData = (el: Element): string | null => {
+export const shapeToPathData = (el: Element, viewport?: ShapeViewport): string | null => {
     switch (el.tagName.toLowerCase()) {
         case 'path':
             return el.getAttribute('d');
         case 'rect':
-            return rectToPathData(el);
+            return rectToPathData(el, viewport);
         case 'circle':
-            return circleToPathData(el);
+            return circleToPathData(el, viewport);
         case 'ellipse':
-            return ellipseElToPathData(el);
+            return ellipseElToPathData(el, viewport);
         case 'line':
-            return lineToPathData(el);
+            return lineToPathData(el, viewport);
         case 'polygon':
             return polygonToPathData(el);
         case 'polyline':
@@ -129,33 +160,33 @@ export const shapeToPathData = (el: Element): string | null => {
  * default for both). Simple shapes read it straight from their attributes;
  * `<path>` needs `bbox.ts`'s approximate parse since `d` is opaque.
  */
-export const computeShapeBBox = (el: Element): BBoxRect | null => {
+export const computeShapeBBox = (el: Element, viewport?: ShapeViewport): BBoxRect | null => {
     switch (el.tagName.toLowerCase()) {
         case 'rect': {
-            const x = num(el.getAttribute('x'));
-            const y = num(el.getAttribute('y'));
-            const width = num(el.getAttribute('width'));
-            const height = num(el.getAttribute('height'));
+            const x = num(el.getAttribute('x'), 0, viewport?.width);
+            const y = num(el.getAttribute('y'), 0, viewport?.height);
+            const width = num(el.getAttribute('width'), 0, viewport?.width);
+            const height = num(el.getAttribute('height'), 0, viewport?.height);
             return { x, y, width, height };
         }
         case 'circle': {
-            const cx = num(el.getAttribute('cx'));
-            const cy = num(el.getAttribute('cy'));
-            const r = num(el.getAttribute('r'));
+            const cx = num(el.getAttribute('cx'), 0, viewport?.width);
+            const cy = num(el.getAttribute('cy'), 0, viewport?.height);
+            const r = num(el.getAttribute('r'), 0, viewport && diagonalBasis(viewport));
             return { x: cx - r, y: cy - r, width: r * 2, height: r * 2 };
         }
         case 'ellipse': {
-            const cx = num(el.getAttribute('cx'));
-            const cy = num(el.getAttribute('cy'));
-            const rx = num(el.getAttribute('rx'));
-            const ry = num(el.getAttribute('ry'));
+            const cx = num(el.getAttribute('cx'), 0, viewport?.width);
+            const cy = num(el.getAttribute('cy'), 0, viewport?.height);
+            const rx = num(el.getAttribute('rx'), 0, viewport?.width);
+            const ry = num(el.getAttribute('ry'), 0, viewport?.height);
             return { x: cx - rx, y: cy - ry, width: rx * 2, height: ry * 2 };
         }
         case 'line': {
-            const x1 = num(el.getAttribute('x1'));
-            const y1 = num(el.getAttribute('y1'));
-            const x2 = num(el.getAttribute('x2'));
-            const y2 = num(el.getAttribute('y2'));
+            const x1 = num(el.getAttribute('x1'), 0, viewport?.width);
+            const y1 = num(el.getAttribute('y1'), 0, viewport?.height);
+            const x2 = num(el.getAttribute('x2'), 0, viewport?.width);
+            const y2 = num(el.getAttribute('y2'), 0, viewport?.height);
             return {
                 x: Math.min(x1, x2),
                 y: Math.min(y1, y2),

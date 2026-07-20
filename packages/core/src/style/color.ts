@@ -182,6 +182,32 @@ const parseHexColor = (hex: string): RgbColor | null => {
 };
 
 const RGB_FN_RE = /^rgba?\(([^)]*)\)$/i;
+const HSL_FN_RE = /^hsla?\(([^)]*)\)$/i;
+
+// hue in degrees (any real number, wrapped into [0,360)); saturation/lightness in [0,1].
+const hslToRgb = (h: number, s: number, l: number): RgbColor => {
+    const hue = ((h % 360) + 360) % 360;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+    const m = l - c / 2;
+    const [r1, g1, b1] =
+        hue < 60
+            ? [c, x, 0]
+            : hue < 120
+              ? [x, c, 0]
+              : hue < 180
+                ? [0, c, x]
+                : hue < 240
+                  ? [0, x, c]
+                  : hue < 300
+                    ? [x, 0, c]
+                    : [c, 0, x];
+    return {
+        r: clampChannel((r1 + m) * 255),
+        g: clampChannel((g1 + m) * 255),
+        b: clampChannel((b1 + m) * 255),
+    };
+};
 
 /**
  * Resolves a CSS/SVG color value to RGB. Returns `null` for `none`/`transparent`
@@ -213,6 +239,17 @@ export const parseSvgColor = (value: string | null): RgbColor | null => {
             };
         }
         return null;
+    }
+
+    const hslMatch = trimmed.match(HSL_FN_RE);
+    if (hslMatch) {
+        const parts = hslMatch[1].split(',').map((p) => p.trim());
+        if (parts.length < 3) return null;
+        const h = parseFloat(parts[0]);
+        const s = parseFloat(parts[1]) / 100;
+        const l = parseFloat(parts[2]) / 100;
+        if (Number.isNaN(h) || Number.isNaN(s) || Number.isNaN(l)) return null;
+        return hslToRgb(h, Math.min(1, Math.max(0, s)), Math.min(1, Math.max(0, l)));
     }
 
     return CSS_NAMED_COLORS[trimmed.toLowerCase()] ?? null;

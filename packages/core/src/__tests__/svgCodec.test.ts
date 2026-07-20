@@ -176,6 +176,13 @@ describe('parseSvgDocument', () => {
         expect(shapesOf(doc)[0].fill).toBeNull();
     });
 
+    it("resolves a top-level shape's %-valued geometry against the root viewBox size", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 200 100"><rect x="2%" y="2%" width="96%" height="96%"/></svg>',
+        );
+        expect(shapesOf(doc)[0].d).toBe('M 4 2 H 196 V 98 H 4 Z');
+    });
+
     it('parses stroke-dasharray/stroke-dashoffset', () => {
         const doc = parseSvgDocument(
             '<svg viewBox="0 0 100 100"><line x1="0" y1="0" x2="10" y2="0" stroke="#000" stroke-dasharray="5,3" stroke-dashoffset="2"/></svg>',
@@ -444,17 +451,24 @@ describe('parseSvgDocument (markers)', () => {
 
     it('supports the `marker` shorthand for all three positions', () => {
         const doc = parseSvgDocument(
-            '<svg viewBox="0 0 100 100"><defs><marker id="m" markerWidth="4" markerHeight="4"><circle cx="2" cy="2" r="2"/></marker></defs><line x1="0" y1="0" x2="10" y2="0" marker="url(#m)"/></svg>',
+            '<svg viewBox="0 0 100 100"><defs><marker id="m" markerWidth="4" markerHeight="4"><circle cx="2" cy="2" r="2"/></marker></defs><line x1="0" y1="0" x2="10" y2="0" style="marker:url(#m)"/></svg>',
         );
         expect(markersOf(doc)).toHaveLength(2);
     });
 
     it('lets an explicit marker-mid="none" override the `marker` shorthand for just that position', () => {
         const doc = parseSvgDocument(
-            '<svg viewBox="0 0 100 100"><defs><marker id="m" markerWidth="4" markerHeight="4"><circle cx="2" cy="2" r="2"/></marker></defs><path d="M0,0 L10,0 L20,0" marker="url(#m)" marker-mid="none"/></svg>',
+            '<svg viewBox="0 0 100 100"><defs><marker id="m" markerWidth="4" markerHeight="4"><circle cx="2" cy="2" r="2"/></marker></defs><path d="M0,0 L10,0 L20,0" style="marker:url(#m)" marker-mid="none"/></svg>',
         );
         expect(markersOf(doc)).toHaveLength(2);
         expect(markersOf(doc).every((m) => m.markerId === 'm')).toBe(true);
+    });
+
+    it('ignores a bare marker="..." XML attribute (the shorthand is CSS-only — only style/CSS is honored, matching browsers)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><marker id="m" markerWidth="4" markerHeight="4"><circle cx="2" cy="2" r="2"/></marker></defs><line x1="0" y1="0" x2="10" y2="0" marker="url(#m)"/></svg>',
+        );
+        expect(markersOf(doc)).toHaveLength(0);
     });
 
     it('does not emit markers for a <rect>/<circle>/<ellipse> (not marker-eligible per spec)', () => {
@@ -481,6 +495,21 @@ describe('parseSvgDocument (markers)', () => {
         const end = markers.find((m) => m.type === 'marker' && m.markerId === 'b');
         expect(start && 'scale' in start ? start.scale : undefined).toBe(3);
         expect(end && 'scale' in end ? end.scale : undefined).toBe(1);
+    });
+
+    it('defaults overflowVisible to false (clipped), and reads overflow="visible" when set', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><marker id="a" markerWidth="4" markerHeight="4"><circle cx="2" cy="2" r="2"/></marker><marker id="b" overflow="visible" markerWidth="4" markerHeight="4"><circle cx="2" cy="2" r="2"/></marker></defs><line x1="0" y1="0" x2="10" y2="0" marker-start="url(#a)" marker-end="url(#b)"/></svg>',
+        );
+        expect(doc.markers.get('a')?.overflowVisible).toBe(false);
+        expect(doc.markers.get('b')?.overflowVisible).toBe(true);
+    });
+
+    it('inherits overflowVisible from another <marker> via href when not set on the referencing marker', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><marker id="base" overflow="visible" markerWidth="4" markerHeight="4"><circle cx="2" cy="2" r="2"/></marker><marker id="m" href="#base"/></defs><line x1="0" y1="0" x2="10" y2="0" marker-start="url(#m)"/></svg>',
+        );
+        expect(doc.markers.get('m')?.overflowVisible).toBe(true);
     });
 
     it('inherits attributes and content from another <marker> via href', () => {
@@ -795,12 +824,19 @@ describe('parseSvgDocument (text)', () => {
 
     it('applies text-transform: uppercase/lowercase/capitalize to the run text', () => {
         const doc = parseSvgDocument(
-            '<svg viewBox="0 0 100 100"><text text-transform="uppercase">hello world</text><text y="10" text-transform="lowercase">HELLO WORLD</text><text y="20" text-transform="capitalize">hello world</text></svg>',
+            '<svg viewBox="0 0 100 100"><text style="text-transform:uppercase">hello world</text><text y="10" style="text-transform:lowercase">HELLO WORLD</text><text y="20" style="text-transform:capitalize">hello world</text></svg>',
         );
         const texts = textsOf(doc);
         expect(texts[0].text).toBe('HELLO WORLD');
         expect(texts[1].text).toBe('hello world');
         expect(texts[2].text).toBe('Hello World');
+    });
+
+    it('ignores a bare text-transform="..." XML attribute (not a real SVG presentation attribute — only style/CSS is honored, matching browsers)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><text text-transform="uppercase">hello world</text></svg>',
+        );
+        expect(textsOf(doc)[0].text).toBe('hello world');
     });
 
     it("resolves letter-spacing/word-spacing, including em units relative to the element's own font-size", () => {

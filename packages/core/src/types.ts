@@ -355,6 +355,7 @@ export interface MarkerDef {
     readonly markerUnits: MarkerUnits;
     readonly orient: MarkerOrient;
     readonly viewBox: MarkerViewBox | null;
+    readonly overflowVisible: boolean;
     readonly instructions: readonly SvgInstruction[];
 }
 

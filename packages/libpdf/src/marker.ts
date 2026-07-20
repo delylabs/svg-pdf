@@ -1,6 +1,7 @@
 import { ops, type PDF as LibPDF, type PDFFormXObject } from '@libpdf/core';
 
 import {
+    computePathBBox,
     isIdentityMatrix,
     type MarkerDef,
     type Matrix2D,
@@ -63,10 +64,47 @@ export const buildMarkerFormXObject = (
         rawBBox.y + rawBBox.height,
         contentMatrix,
     );
-    const bboxX = Math.min(x0, x1);
-    const bboxY = Math.min(y0, y1);
-    const bboxWidth = Math.abs(x1 - x0);
-    const bboxHeight = Math.abs(y1 - y0);
+    let minX = Math.min(x0, x1);
+    let minY = Math.min(y0, y1);
+    let maxX = Math.max(x0, x1);
+    let maxY = Math.max(y0, y1);
+
+    /*
+     * `overflow="visible"` opts the marker's content out of the
+     * markerWidth/markerHeight clip (a common technique for a custom
+     * arrowhead whose path coordinates deliberately extend past a small
+     * nominal viewport, e.g. `markerWidth="1"` with path coordinates from
+     * -1 to 0.6) — but a PDF Form XObject's /BBox is always a hard clip,
+     * there's no PDF equivalent of "don't clip". So instead of the nominal
+     * viewport rect above, the /BBox is grown to actually contain the
+     * content's shapes (in the same pre-`contentMatrix` coordinate space
+     * `rawBBox`'s corners were transformed from, above) — a best-effort,
+     * shapes-only bbox (other instruction types are rare inside a
+     * `<marker>` and are left to the nominal viewport rect instead).
+     */
+    if (def.overflowVisible) {
+        for (const instruction of def.instructions) {
+            if (instruction.type !== 'shape') continue;
+            const shapeBBox = computePathBBox(instruction.d);
+            if (!shapeBBox) continue;
+            const corners: [number, number][] = [
+                [shapeBBox.x, shapeBBox.y],
+                [shapeBBox.x + shapeBBox.width, shapeBBox.y + shapeBBox.height],
+            ];
+            for (const [cx, cy] of corners) {
+                const [px, py] = transformPoint(cx, cy, contentMatrix);
+                minX = Math.min(minX, px);
+                minY = Math.min(minY, py);
+                maxX = Math.max(maxX, px);
+                maxY = Math.max(maxY, py);
+            }
+        }
+    }
+
+    const bboxX = minX;
+    const bboxY = minY;
+    const bboxWidth = maxX - minX;
+    const bboxHeight = maxY - minY;
     if (bboxWidth <= 0 || bboxHeight <= 0) return null;
 
     const operators: ReturnType<typeof ops.moveTo>[] = isIdentityMatrix(contentMatrix)

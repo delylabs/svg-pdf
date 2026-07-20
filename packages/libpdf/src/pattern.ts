@@ -6,6 +6,7 @@ import {
     type Matrix2D,
     multiplyMatrix,
     type PatternDef,
+    translateMatrix,
 } from '@delylabs/plotify';
 import { appendCellInstructions } from './cellOperators';
 
@@ -81,7 +82,21 @@ export const resolvePatternFill = (
         def.patternContentUnits === 'objectBoundingBox' && bbox
             ? { a: bbox.width, b: 0, c: 0, d: bbox.height, e: 0, f: 0 }
             : IDENTITY_MATRIX;
-    const contentMatrix = multiplyMatrix(contentUnitsMatrix, fullMatrix);
+    /*
+     * The tile's own content is authored relative to its local (0,0) origin
+     * (e.g. a `<rect width="6">` inside a `<pattern x="4" ...>` still starts
+     * at x=0 in its own markup), but `deviceX`/`deviceY` above already baked
+     * the `x`/`y` tile-origin offset into where the *bbox* sits in device
+     * space. Without also translating the content by that same offset here,
+     * content and bbox land in different places — content drawn at the
+     * unshifted local origin gets clipped by a bbox that has moved out from
+     * under it (only their overlap survives PDF's hard bbox clip), instead
+     * of the two staying aligned the way `<pattern x="4">`'s offset intends.
+     */
+    const contentMatrix = multiplyMatrix(
+        multiplyMatrix(contentUnitsMatrix, translateMatrix(tileX, tileY)),
+        fullMatrix,
+    );
 
     const operators: ReturnType<typeof ops.moveTo>[] = [concat(contentMatrix)];
     appendCellInstructions(def.instructions, '<pattern> content', operators, warnings);

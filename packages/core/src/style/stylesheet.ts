@@ -236,3 +236,21 @@ export const readPresentation = (
     const cssValue = cssRules ? cssValueFor(el, name, cssRules) : null;
     return cssValue ?? el.getAttribute(name);
 };
+
+/*
+ * Like `readPresentation`, but without the bare-XML-attribute fallback.
+ * Some CSS properties (`text-transform` among them) were never defined as
+ * SVG presentation attributes, so browsers only honor them via `style="..."`
+ * or a `<style>` rule — a plain `text-transform="uppercase"` attribute is
+ * inert. Use this for properties that are CSS-only, not presentation
+ * attributes, to match that behavior.
+ */
+export const readCssOnly = (
+    el: Element,
+    name: string,
+    cssRules?: readonly CssRule[],
+): string | null => {
+    const style = parseInlineStyle(el.getAttribute('style'));
+    if (style.has(name)) return style.get(name)!;
+    return cssRules ? cssValueFor(el, name, cssRules) : null;
+};

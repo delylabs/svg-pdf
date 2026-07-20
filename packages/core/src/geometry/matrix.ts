@@ -83,9 +83,10 @@ const rotateMatrix = (deg: number, cx = 0, cy = 0): Matrix2D => {
     const sin = Math.sin(rad);
     const rotation: Matrix2D = { a: cos, b: sin, c: -sin, d: cos, e: 0, f: 0 };
     if (cx === 0 && cy === 0) return rotation;
+    // Ensure the pivot itself stays fixed under the resulting matrix.
     return multiplyMatrix(
-        multiplyMatrix(translateMatrix(cx, cy), rotation),
-        translateMatrix(-cx, -cy),
+        multiplyMatrix(translateMatrix(-cx, -cy), rotation),
+        translateMatrix(cx, cy),
     );
 };
 

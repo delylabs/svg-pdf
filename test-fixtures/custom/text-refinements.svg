@@ -1,7 +1,7 @@
 <svg viewBox="0 0 400 200" xmlns="http://www.w3.org/2000/svg">
   <g font-size="20">
-    <text x="10" y="30" text-transform="uppercase">hello world</text>
-    <text x="10" y="60" text-transform="capitalize">hello world</text>
+    <text x="10" y="30" style="text-transform:uppercase">hello world</text>
+    <text x="10" y="60" style="text-transform:capitalize">hello world</text>
     <text x="10" y="90" letter-spacing="4">Spaced Out</text>
     <text x="10" y="120" word-spacing="20">Wide Word Gaps</text>
     <text x="10" y="150" xml:space="preserve">a    b    c</text>

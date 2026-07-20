@@ -141,6 +141,7 @@ export const parseSvgDocument = (svgText: string): ParsedSvgDocument => {
         patterns,
         markers,
         cssRules,
+        viewport: { width: size.viewBoxWidth, height: size.viewBoxHeight },
         resolvePattern: (el: Element) => resolvePatternDef(el, rootCtx),
         resolveMarker: (el: Element) => resolveMarkerDef(el, rootCtx),
     };
