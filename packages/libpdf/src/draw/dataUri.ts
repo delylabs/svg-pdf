@@ -1,17 +1,30 @@
-const DATA_URI_RE = /^data:([^;,]*);base64,([\s\S]*)$/;
+const DATA_URI_RE = /^data:([^,]*),([\s\S]*)$/;
 
-// Decodes a `data:<mime>;base64,<payload>` URI into raw bytes. Returns `null` for anything else (missing/invalid base64) — the caller turns that into a skip-with-warning.
+/*
+ * Decodes a `data:<mime>[;base64],<payload>` URI into raw bytes. The
+ * `;base64` parameter is optional — plain/percent-encoded payloads (common
+ * for hand-authored `data:image/svg+xml,...`) are decoded via
+ * `decodeURIComponent` + UTF-8 encoding instead. Returns `null` for
+ * anything else (missing/invalid payload) — the caller turns that into a
+ * skip-with-warning.
+ */
 export const decodeDataUri = (href: string): { bytes: Uint8Array; mimeType: string } | null => {
     const match = DATA_URI_RE.exec(href);
     if (!match) return null;
-    const [, mimeType, base64] = match;
+    const [, header, payload] = match;
+    const params = header.split(';');
+    const mimeType = params[0] || 'image/png';
+    const isBase64 = params.slice(1).some((p) => p.trim().toLowerCase() === 'base64');
     try {
-        const binary = atob(base64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-            bytes[i] = binary.charCodeAt(i);
+        if (isBase64) {
+            const binary = atob(payload);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return { bytes, mimeType };
         }
-        return { bytes, mimeType: mimeType || 'image/png' };
+        return { bytes: new TextEncoder().encode(decodeURIComponent(payload)), mimeType };
     } catch {
         return null;
     }

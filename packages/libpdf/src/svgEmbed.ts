@@ -1,27 +1,19 @@
-import { ops, type PDF as LibPDF, type PDFFormXObject } from '@libpdf/core';
+import { ops, type PDF as LibPDF } from '@libpdf/core';
 
 import {
     type BlendMode,
     computeViewBoxTransform,
-    invertMatrix,
-    type MarkerDef,
     type Matrix2D,
     multiplyMatrix,
     parseSvgDocument,
     scaleMatrix,
     translateMatrix,
 } from '@svg-pdf/core';
-import { concat, type DrawContext } from './draw/drawContext';
-import { drawImage } from './draw/drawImage';
-import { drawMarker } from './draw/drawMarker';
-import { drawShape } from './draw/drawShape';
-import { drawText } from './draw/drawText';
-import { drawTextPath } from './draw/drawTextPath';
+import { buildDrawContext, concat } from './draw/drawContext';
+import { runInstructions } from './draw/drawInstructions';
 import { createLinkTracker } from './draw/linkAnnotations';
-import { resolveTextLayout } from './draw/textLayout';
 import { normalizeImageForEmbed } from './normalizeImage';
 import { fitImageToPage, type PageOrientation, resolvePageOrientation } from './pageGeometry';
-import { buildMarkerFormXObject } from './resources/marker';
 import { normalizeRotation } from './rotation';
 
 export interface EmbedSvgResult {
@@ -203,24 +195,7 @@ export const embedSvgInPdf = async (
         return name;
     };
 
-    // A <marker>'s Form XObject only needs building once (its content never varies per vertex) — cached by id, `null` remembered too so a marker that failed to build (e.g. zero markerWidth/markerHeight) isn't retried at every vertex.
-    const markerXObjects = new Map<string, PDFFormXObject | null>();
-    const getMarkerXObject = (markerId: string, def: MarkerDef): PDFFormXObject | null => {
-        if (markerXObjects.has(markerId)) return markerXObjects.get(markerId) ?? null;
-        const xobject = buildMarkerFormXObject(def, doc, warnings);
-        markerXObjects.set(markerId, xobject);
-        return xobject;
-    };
-
-    const { textWidths, textAnchorOffsets, textFonts, textCharLayout } = await resolveTextLayout(
-        instructions,
-        fontFaces,
-        doc,
-        fetchFont,
-        warnings,
-    );
-
-    const ctx: DrawContext = {
+    const ctx = await buildDrawContext({
         doc,
         page,
         warnings,
@@ -229,94 +204,16 @@ export const embedSvgInPdf = async (
         markers,
         rootMatrix,
         getBlendModeGsName,
-        getMarkerXObject,
         link: createLinkTracker(page),
-        textWidths,
-        textAnchorOffsets,
-        textFonts,
-        textCharLayout,
         fetchImage,
         normalizeImage,
-        flowCursorX: null,
-    };
+        fetchFont,
+        instructions,
+        fontFaces,
+        embedDepth: 0,
+    });
 
-    /*
-     * Mirrors core's own `accMatrix` accumulation (see `walk.ts`'s
-     * `elMatrix`/`groupMatrix`) on this side of the fence: `pushMatrix`/
-     * `popMatrix` instructions are the only things that change the ambient
-     * transform a shape/text/image instruction's local coordinates are
-     * drawn under, so tracking them here gives the exact matrix PDF's own
-     * CTM has active at that instruction — needed to turn an `<a>`'s
-     * wrapped content into one absolute, page-space `Rect` (see
-     * `linkAnnotations.ts`), since annotations aren't part of the content
-     * stream and can't just inherit the CTM the way a `drawSvgPath`/
-     * `drawText` call does.
-     */
-    let currentMatrix: Matrix2D = rootMatrix;
-    const matrixStack: Matrix2D[] = [];
-
-    for (const instruction of instructions) {
-        switch (instruction.type) {
-            case 'pushMatrix':
-                page.drawOperators([ops.pushGraphicsState(), concat(instruction.matrix)]);
-                matrixStack.push(currentMatrix);
-                currentMatrix = multiplyMatrix(instruction.matrix, currentMatrix);
-                break;
-            case 'popMatrix':
-                page.drawOperators([ops.popGraphicsState()]);
-                currentMatrix = matrixStack.pop() ?? rootMatrix;
-                break;
-            case 'linkStart':
-                ctx.link.start(instruction.href);
-                break;
-            case 'linkEnd':
-                ctx.link.flush();
-                break;
-            case 'shape':
-                drawShape(instruction, ctx, currentMatrix);
-                break;
-            case 'pushClip': {
-                page.drawOperators([ops.pushGraphicsState()]);
-                if (instruction.bboxMatrix) {
-                    page.drawOperators([concat(instruction.bboxMatrix)]);
-                }
-                let pathBuilder = page.drawPath();
-                for (const d of instruction.paths) {
-                    pathBuilder = pathBuilder.appendSvgPath(d, {
-                        flipY: false,
-                    });
-                }
-                if (instruction.clipRule === 'evenodd') {
-                    pathBuilder.clipEvenOdd();
-                } else {
-                    pathBuilder.clip();
-                }
-                // `W`/`W*` alone only sets the clip flag; `n` ends the path as a no-op paint.
-                page.drawOperators([ops.endPath()]);
-                if (instruction.bboxMatrix) {
-                    page.drawOperators([concat(invertMatrix(instruction.bboxMatrix))]);
-                }
-                break;
-            }
-            case 'popClip':
-                page.drawOperators([ops.popGraphicsState()]);
-                break;
-            case 'text':
-                drawText(instruction, ctx, currentMatrix);
-                break;
-            case 'textPath':
-                drawTextPath(instruction, ctx);
-                break;
-            case 'image':
-                await drawImage(instruction, ctx, currentMatrix);
-                break;
-            case 'marker':
-                drawMarker(instruction, ctx);
-                break;
-        }
-    }
-    // Defensive only — a well-formed instruction stream always closes every `linkStart` with a `linkEnd` before the loop ends.
-    ctx.link.flush();
+    await runInstructions(instructions, ctx, rootMatrix);
 
     page.drawOperators([ops.popGraphicsState()]);
 
