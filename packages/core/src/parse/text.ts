@@ -117,14 +117,9 @@ function walkTextPathElement(el: Element, inherited: ShapePaint, ctx: WalkContex
     const textLength = el.hasAttribute('textLength')
         ? num(el.getAttribute('textLength'), 0, totalLength)
         : null;
-    if (textLength !== null && textLength > 0) {
-        const lengthAdjust = (el.getAttribute('lengthAdjust') ?? 'spacing').trim();
-        if (lengthAdjust === 'spacingAndGlyphs') {
-            ctx.warnings.push(
-                '<textPath lengthAdjust="spacingAndGlyphs"> is not supported — only inter-character spacing was stretched/compressed to fit textLength, glyphs themselves were not resized',
-            );
-        }
-    }
+    const lengthAdjustAttr = (el.getAttribute('lengthAdjust') ?? 'spacing').trim();
+    const lengthAdjust: 'spacing' | 'spacingAndGlyphs' =
+        lengthAdjustAttr === 'spacingAndGlyphs' ? 'spacingAndGlyphs' : 'spacing';
 
     let isFirstRun = true;
     const walkSubtree = (subEl: Element, subInherited: ShapePaint): void => {
@@ -166,6 +161,7 @@ function walkTextPathElement(el: Element, inherited: ShapePaint, ctx: WalkContex
                                 ? textLength
                                 : null
                             : null,
+                        lengthAdjust: isFirstRun ? lengthAdjust : 'spacing',
                         continuesFlow: !isFirstRun,
                         startsNewChunk: isFirstRun,
                     });

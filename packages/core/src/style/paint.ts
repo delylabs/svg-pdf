@@ -10,7 +10,6 @@ import type {
     ShapePaint,
     StandardFontName,
     TextTransform,
-    VectorEffect,
 } from '../types';
 import { parseFloats } from '../geometry/matrix';
 import { CSS_NAMED_COLORS, parseSvgColor } from './color';

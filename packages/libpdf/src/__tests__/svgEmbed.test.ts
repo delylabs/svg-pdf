@@ -913,13 +913,17 @@ describe('embedSvgInPdf', () => {
             const content = getPageContentText(doc, 0);
             const tjCount = (content.match(/Tj/g) ?? []).length;
             expect(tjCount).toBe(2);
-            const matches = [...content.matchAll(/1 0 0 1 (-?[\d.]+) (-?[\d.]+) Tm/g)];
+            const matches = [
+                ...content.matchAll(
+                    /(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) cm\n\nq\n0 0 0 rg\nBT\n\/F0 16 Tf\n1 0 0 1 0 0 Tm/g,
+                ),
+            ];
             expect(matches).toHaveLength(2);
             const widthA = measureText('A', 'Helvetica', 16);
-            expect(Number(matches[0][1])).toBeCloseTo(10, 5);
-            expect(Number(matches[0][2])).toBeCloseTo(-5, 5);
-            expect(Number(matches[1][1])).toBeCloseTo(10 + widthA, 5);
-            expect(Number(matches[1][2])).toBeCloseTo(-5, 5);
+            expect(Number(matches[0][5])).toBeCloseTo(10, 5);
+            expect(Number(matches[0][6])).toBeCloseTo(-5, 5);
+            expect(Number(matches[1][5])).toBeCloseTo(10 + widthA, 5);
+            expect(Number(matches[1][6])).toBeCloseTo(-5, 5);
         });
 
         it('rotates a character to match a non-horizontal path tangent', async () => {
@@ -930,8 +934,8 @@ describe('embedSvgInPdf', () => {
                 rotation: 0,
             });
             const content = getPageContentText(doc, 0);
-            // A vertical (Y-down) path segment: local tangent angle is +90°, negated for the FLIP_Y bracket to -90° (cos 0, sin -1).
-            expect(content).toMatch(/6\.123\d*e-17 -1 1 6\.123\d*e-17 0 0 cm|0 -1 1 0 0 0 cm/);
+            // A vertical (Y-down) path segment: local tangent angle is +90°, negated for FLIP_Y to -90° (0 -1 1 0 50 0 cm).
+            expect(content).toMatch(/0 -1 1 0 50 0 cm/);
         });
 
         it('shifts the start distance back by half the total advance for text-anchor="middle"', async () => {
@@ -942,12 +946,16 @@ describe('embedSvgInPdf', () => {
                 rotation: 0,
             });
             const content = getPageContentText(doc, 0);
-            const matches = [...content.matchAll(/1 0 0 1 (-?[\d.]+) -5 Tm/g)];
+            const matches = [
+                ...content.matchAll(
+                    /(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) cm\n\nq\n0 0 0 rg\nBT\n\/F0 16 Tf\n1 0 0 1 0 0 Tm/g,
+                ),
+            ];
             expect(matches).toHaveLength(2);
             const widthA = measureText('A', 'Helvetica', 16);
             const widthB = measureText('B', 'Helvetica', 16);
             const totalAdvance = widthA + widthB;
-            expect(Number(matches[0][1])).toBeCloseTo(100 - totalAdvance / 2, 5);
+            expect(Number(matches[0][5])).toBeCloseTo(100 - totalAdvance / 2, 5);
         });
 
         it('resolves a percentage startOffset relative to the path length', async () => {
@@ -958,9 +966,13 @@ describe('embedSvgInPdf', () => {
                 rotation: 0,
             });
             const content = getPageContentText(doc, 0);
-            const match = content.match(/1 0 0 1 (-?[\d.]+) -5 Tm/);
-            expect(match).not.toBeNull();
-            expect(Number(match![1])).toBeCloseTo(500, 5);
+            const matches = [
+                ...content.matchAll(
+                    /(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) cm\n\nq\n0 0 0 rg\nBT\n\/F0 16 Tf\n1 0 0 1 0 0 Tm/g,
+                ),
+            ];
+            expect(matches.length).toBeGreaterThanOrEqual(1);
+            expect(Number(matches[0][5])).toBeCloseTo(500, 5);
         });
 
         it('stretches inter-character spacing to fit an explicit textLength', async () => {
@@ -971,12 +983,16 @@ describe('embedSvgInPdf', () => {
                 rotation: 0,
             });
             const content = getPageContentText(doc, 0);
-            const matches = [...content.matchAll(/1 0 0 1 (-?[\d.]+) -5 Tm/g)];
+            const matches = [
+                ...content.matchAll(
+                    /(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) cm\n\nq\n0 0 0 rg\nBT\n\/F0 16 Tf\n1 0 0 1 0 0 Tm/g,
+                ),
+            ];
             expect(matches).toHaveLength(2);
             // Natural advance (no textLength) would place 'B' at width(A); textLength="200" stretches that gap so B lands further out.
             const widthA = measureText('A', 'Helvetica', 16);
-            expect(Number(matches[0][1])).toBeCloseTo(0, 5);
-            expect(Number(matches[1][1])).toBeGreaterThan(widthA);
+            expect(Number(matches[0][5])).toBeCloseTo(0, 5);
+            expect(Number(matches[1][5])).toBeGreaterThan(widthA);
         });
 
         it('compresses inter-character spacing when textLength is shorter than the natural advance', async () => {
@@ -987,27 +1003,39 @@ describe('embedSvgInPdf', () => {
                 rotation: 0,
             });
             const content = getPageContentText(doc, 0);
-            const matches = [...content.matchAll(/1 0 0 1 (-?[\d.]+) -5 Tm/g)];
+            const matches = [
+                ...content.matchAll(
+                    /(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) cm\n\nq\n0 0 0 rg\nBT\n\/F0 16 Tf\n1 0 0 1 0 0 Tm/g,
+                ),
+            ];
             expect(matches).toHaveLength(2);
             const widthA = measureText('A', 'Helvetica', 16);
             const widthB = measureText('B', 'Helvetica', 16);
             const naturalAdvance = widthA + widthB;
             const extraPerChar = (5 - naturalAdvance) / 2;
-            expect(Number(matches[1][1])).toBeCloseTo(widthA + extraPerChar, 5);
-            expect(Number(matches[1][1])).toBeLessThan(widthA);
+            expect(Number(matches[1][5])).toBeCloseTo(widthA + extraPerChar, 5);
+            expect(Number(matches[1][5])).toBeLessThan(widthA);
         });
 
-        it('warns but still stretches spacing when lengthAdjust="spacingAndGlyphs" is requested', async () => {
+        it('resizes glyphs horizontally when lengthAdjust="spacingAndGlyphs" is requested', async () => {
             const doc = LibPDF.create();
             const result = await embedSvgInPdf(doc, {
                 svgText:
                     '<svg viewBox="0 0 1000 100"><path id="p" d="M0 5 L1000 5"/><text><textPath href="#p" textLength="200" lengthAdjust="spacingAndGlyphs">AB</textPath></text></svg>',
                 rotation: 0,
             });
-            expect(result.warnings.some((w) => w.includes('spacingAndGlyphs'))).toBe(true);
+            expect(result.warnings.some((w) => w.includes('spacingAndGlyphs'))).toBe(false);
             const content = getPageContentText(doc, 0);
-            const tjCount = (content.match(/Tj/g) ?? []).length;
-            expect(tjCount).toBe(2);
+            const matches = [
+                ...content.matchAll(
+                    /(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) cm\n\nq\n0 0 0 rg\nBT\n\/F0 16 Tf\n1 0 0 1 0 0 Tm/g,
+                ),
+            ];
+            expect(matches).toHaveLength(2);
+            const widthA = measureText('A', 'Helvetica', 16);
+            const widthB = measureText('B', 'Helvetica', 16);
+            const expectedScale = 200 / (widthA + widthB);
+            expect(Number(matches[0][1])).toBeCloseTo(expectedScale, 4);
         });
 
         it('stops drawing characters that would fall past the end of the path', async () => {

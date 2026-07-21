@@ -1215,12 +1215,12 @@ describe('parseSvgDocument (textPath)', () => {
         expect(tp.textLength).toBeCloseTo(50);
     });
 
-    it('warns when lengthAdjust="spacingAndGlyphs" is requested alongside textLength', () => {
+    it('parses lengthAdjust="spacingAndGlyphs" without warning', () => {
         const doc = parseSvgDocument(
             '<svg viewBox="0 0 100 100"><path id="p" d="M0 0 L100 0"/><text><textPath href="#p" textLength="50" lengthAdjust="spacingAndGlyphs">Curved</textPath></text></svg>',
         );
         expect(textPathsOf(doc)).toHaveLength(1);
-        expect(doc.warnings.some((w) => w.includes('spacingAndGlyphs'))).toBe(true);
+        expect(doc.warnings.some((w) => w.includes('spacingAndGlyphs'))).toBe(false);
     });
 
     it('inherits fill/font-size from the ancestor <text>', () => {

@@ -292,6 +292,7 @@ export interface TextPathInstruction {
     readonly wordSpacing: number;
     // Resolved `textLength` (plain number or % of the path's total length), or null if absent/invalid — see the doc comment above.
     readonly textLength: number | null;
+    readonly lengthAdjust?: 'spacing' | 'spacingAndGlyphs';
     readonly continuesFlow: boolean;
     readonly startsNewChunk: boolean;
 }
