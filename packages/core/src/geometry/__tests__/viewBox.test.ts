@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { computeViewBoxTransform, parsePreserveAspectRatio } from '..';
+import { computeViewBoxTransform, parsePreserveAspectRatio } from '../viewBox';
 
 describe('parsePreserveAspectRatio', () => {
     it('defaults to xMidYMid meet for null/empty/unrecognized input', () => {

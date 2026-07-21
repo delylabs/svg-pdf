@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-    computeCumulativeLengths,
-    flattenPathToPolyline,
-    pointAtLength,
-} from '../geometry/pathLength';
+import { computeCumulativeLengths, flattenPathToPolyline, pointAtLength } from '../pathLength';
 
 describe('flattenPathToPolyline', () => {
     it('keeps M/L points exactly, with no extra subdivision', () => {

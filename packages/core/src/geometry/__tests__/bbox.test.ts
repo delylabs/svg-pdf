@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { computePathBBox } from '../geometry/bbox';
+import { computePathBBox } from '../bbox';
 
 describe('computePathBBox', () => {
     it('returns null for an empty/unparseable path', () => {

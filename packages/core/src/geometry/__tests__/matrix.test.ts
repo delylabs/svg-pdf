@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { IDENTITY_MATRIX, type Matrix2D, multiplyMatrix, parseTransformList } from '..';
+import {
+    getMatrixScale,
+    IDENTITY_MATRIX,
+    type Matrix2D,
+    multiplyMatrix,
+    parseTransformList,
+    scaleMatrix,
+} from '../matrix';
 
 const applyMatrix = (m: Matrix2D, x: number, y: number) => ({
     x: m.a * x + m.c * y + m.e,
@@ -62,5 +69,20 @@ describe('parseTransformList', () => {
     it('parses an explicit matrix() the same as the raw SVG attribute values', () => {
         const m = parseTransformList('matrix(1,0,0,1,10,20)');
         expect(applyMatrix(m, 0, 0)).toEqual({ x: 10, y: 20 });
+    });
+});
+
+describe('getMatrixScale', () => {
+    it('computes scale 1 for identity matrix', () => {
+        expect(getMatrixScale(IDENTITY_MATRIX)).toBe(1);
+    });
+
+    it('computes scale for uniform scaling matrix', () => {
+        expect(getMatrixScale(scaleMatrix(2))).toBe(2);
+        expect(getMatrixScale(scaleMatrix(0.5))).toBe(0.5);
+    });
+
+    it('computes scale for non-uniform scaling matrix', () => {
+        expect(getMatrixScale(scaleMatrix(2, 8))).toBe(4);
     });
 });

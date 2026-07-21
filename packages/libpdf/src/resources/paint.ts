@@ -18,7 +18,7 @@ export const toPdfColor = (color: RgbColor) => rgb(color.r / 255, color.g / 255,
  * A shading pattern's matrix maps to the PDF page's *default* coordinate
  * system, unlike a solid color, which just inherits whatever `cm`s are
  * currently on the graphics-state stack. So instead of relying on the nested
- * pushGraphicsState()/concatMatrix() brackets in svgEmbed.ts
+ * pushGraphicsState()/concatMatrix() brackets in embed.ts
  * (`instruction.groupMatrix`), gradients need their own matrix baked in
  * explicitly: gradientTransform, then (for the default objectBoundingBox
  * units) a scale/translate into the shape's own bbox, then the shape's

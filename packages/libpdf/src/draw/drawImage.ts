@@ -49,7 +49,7 @@ const isSvgPayload = (bytes: Uint8Array, mimeType: string): boolean => {
  * resolved resources leaks in) and replays its instructions into the same
  * page content stream, fit into the `<image>`'s box the same way a nested
  * `<svg>`/`<use>`-of-`<symbol>` fits into its own viewport in core's
- * `walk.ts` (offset + `computeViewBoxTransform`) — not `svgEmbed.ts`'s
+ * `walk.ts` (offset + `computeViewBoxTransform`) — not `embed.ts`'s
  * page-root logic, which also Y-flips for landing on a Y-up PDF page, and
  * isn't needed here since we're already inside the outer Y-down instruction
  * space.

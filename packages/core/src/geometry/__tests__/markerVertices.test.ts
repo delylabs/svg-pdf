@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { computeMarkerVertices } from '../geometry/markerVertices';
+import { computeMarkerVertices } from '../markerVertices';
 
 describe('computeMarkerVertices', () => {
     it('returns an empty list for an empty/unparseable path', () => {

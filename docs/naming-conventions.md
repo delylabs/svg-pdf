@@ -14,12 +14,12 @@ Reason: the filesystem isn't always case-sensitive (Windows, default macOS) — 
 
 Every module (geometry math, style resolution, parsing, PDF adapters, utilities) follows one rule:
 
-| Kind of file                                                | Rule          | Example                                                                  |
-| ----------------------------------------------------------- | ------------- | ------------------------------------------------------------------------ |
-| Any regular module (parser, geometry, style, adapter, util) | **camelCase** | `matrix.ts`, `bbox.ts`, `walk.ts`, `svgEmbed.ts`, `pageGeometry.ts`      |
-| Test file, mirroring the subject under test                 | **camelCase** | `svgCodec.test.ts`, `svgEmbed.visual.test.ts`, `raster.ts` (test helper) |
+| Kind of file                                                | Rule          | Example                                                             |
+| ----------------------------------------------------------- | ------------- | ------------------------------------------------------------------- |
+| Any regular module (parser, geometry, style, adapter, util) | **camelCase** | `matrix.ts`, `bbox.ts`, `walk.ts`, `embed.ts`, `pageGeometry.ts`    |
+| Test file, mirroring the subject under test                 | **camelCase** | `matrix.test.ts`, `embed.visual.test.ts`, `raster.ts` (test helper) |
 
-Test files live under `__tests__/` (the double-underscore prefix is a Vitest/Jest convention marking the directory as test-only, not part of the published package) — the folder name itself is exempt from the kebab-case folder rule for that reason (see section 4).
+Test files live under `__tests__/` (the double-underscore prefix is a Vitest/Jest convention marking the directory as test-only, not part of the published package) — the folder name itself is exempt from the kebab-case folder rule for that reason (see section 4). A test exercising exactly one module sits in the `__tests__/` directory beside that module and mirrors its name (`geometry/__tests__/matrix.test.ts` for `geometry/matrix.ts`); a test spanning several modules through a shared entry point sits in the package-level `src/__tests__/` and is named for the feature domain it covers (`text.test.ts`, `viewports.test.ts`).
 
 ## 3. Docs (`.md`)
 

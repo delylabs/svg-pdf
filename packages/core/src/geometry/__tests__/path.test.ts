@@ -1,7 +1,7 @@
 import { DOMParser as XmlDomParser } from '@xmldom/xmldom';
 import { describe, expect, it } from 'vitest';
 
-import { circleToPathData, polygonToPathData, rectToPathData } from '..';
+import { circleToPathData, polygonToPathData, rectToPathData } from '../path';
 
 const el = (svg: string): Element => {
     const doc = new XmlDomParser({ onError: () => {} }).parseFromString(svg, 'image/svg+xml');

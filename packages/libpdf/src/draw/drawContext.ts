@@ -17,7 +17,7 @@ import {
     type TextInstruction,
     type TextPathInstruction,
 } from '@svg-pdf/core';
-import { type FetchFont, type FetchImage, type NormalizeImage } from '../svgEmbed';
+import { type FetchFont, type FetchImage, type NormalizeImage } from '../embed';
 import { buildMarkerFormXObject } from '../resources/marker';
 import { type LinkTracker } from './linkAnnotations';
 import { resolveTextLayout } from './textLayout';
@@ -36,7 +36,7 @@ export const FLIP_Y: Matrix2D = { a: 1, b: 0, c: 0, d: -1, e: 0, f: 0 };
  * once by `embedSvgInPdf` and never changes — `flowCursorX` is the one
  * field a handler (`drawText`) both reads and writes across separate
  * instructions. The ambient CTM deliberately isn't a field here: it's only
- * mutated by `pushMatrix`/`popMatrix`, which stay inline in `svgEmbed.ts`'s
+ * mutated by `pushMatrix`/`popMatrix`, which stay inline in `embed.ts`'s
  * own loop, and is instead passed as an explicit parameter to whichever
  * handlers need to read it (for link-bbox purposes).
  */

@@ -1,6 +1,6 @@
 /**
  * Parses an SVG document into a flat, worker-safe instruction list that
- * `svgEmbed.ts` replays as PDF drawing calls — no DOM/canvas rendering
+ * `embed.ts` replays as PDF drawing calls — no DOM/canvas rendering
  * involved, so this runs in the PDF worker like every other codec here.
  *
  * Two things a DOM-based parser would normally lean on — text measuring and

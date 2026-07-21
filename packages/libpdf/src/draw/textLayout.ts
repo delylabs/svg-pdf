@@ -6,7 +6,7 @@ import {
     type TextInstruction,
     type TextPathInstruction,
 } from '@svg-pdf/core';
-import { type FetchFont } from '../svgEmbed';
+import { type FetchFont } from '../embed';
 import { decodeDataUri } from './dataUri';
 
 /*

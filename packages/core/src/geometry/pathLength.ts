@@ -92,7 +92,7 @@ export interface PointOnPath extends PathPoint {
  * Finds the point (and tangent direction) at `distance` along a polyline
  * already reduced via `flattenPathToPolyline`/`computeCumulativeLengths`.
  * Returns `null` for a distance outside `[0, totalLength]` — the caller
- * (svgEmbed.ts) decides whether that means "stop drawing" (a character
+ * (embed.ts) decides whether that means "stop drawing" (a character
  * that would fall past the end of the path).
  */
 export const pointAtLength = (

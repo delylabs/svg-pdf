@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { embedSvgInPdf } from '../svgEmbed';
+import { embedSvgInPdf } from '../embed';
 import { diffImages, encodePng } from './visual/diff';
 import { rasterizePdfPage, rasterizeSvg } from './visual/raster';
 

@@ -37,7 +37,7 @@ export const isIdentityMatrix = (m: Matrix2D): boolean =>
 /*
  * Standard 2x3 affine inverse — used to "undo" a clipPathUnits=objectBoundingBox
  * scale after building the clip path, without touching the clip itself (see
- * the `pushClip` handling in svgEmbed.ts for why that can't just be a q/Q pop).
+ * the `pushClip` handling in embed.ts for why that can't just be a q/Q pop).
  */
 export const invertMatrix = (m: Matrix2D): Matrix2D => {
     const det = m.a * m.d - m.b * m.c;

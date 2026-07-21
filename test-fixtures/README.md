@@ -8,4 +8,4 @@ A curated subset of the official **W3C SVG 1.1 Test Suite** (<http://www.w3.org/
 
 ## `custom/`
 
-SVGs authored directly for svg-pdf — not vendored from anywhere, no third-party license to track. Used by `svgCodec.test.ts`'s fixture tests and for exercising SVG feature gaps during development.
+SVGs authored directly for svg-pdf — not vendored from anywhere, no third-party license to track. Used by the unit suites' fixture-based tests and the visual regression suite, and for exercising SVG feature gaps during development.

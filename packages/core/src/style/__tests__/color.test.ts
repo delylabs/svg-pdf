@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseSvgColor } from '..';
+import { parseSvgColor } from '../color';
 
 describe('parseSvgColor', () => {
     it('parses 3 and 6-digit hex', () => {

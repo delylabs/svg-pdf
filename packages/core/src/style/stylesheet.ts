@@ -68,7 +68,7 @@ const computeSpecificity = (tokens: readonly Selector[]): number => {
  * philosophy as the rest of this file: only a `src: url(data:...)` (an
  * inline-embedded font, decodable with no network access) is read — a
  * `src` pointing only at an external URL is left for `fetchFont` to supply
- * instead (see svgEmbed.ts), same reasoning as why `<image>` external URLs
+ * instead (see embed.ts), same reasoning as why `<image>` external URLs
  * need an opt-in fetcher rather than being read automatically. Multiple
  * `src` entries (format fallback lists) are supported by taking the first
  * one that's a `data:` URI.

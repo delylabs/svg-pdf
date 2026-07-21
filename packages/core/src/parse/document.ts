@@ -111,7 +111,7 @@ export const parseSvgRoot = (svgText: string): Element => {
     return root as unknown as Element;
 };
 
-// Parses SVG text into natural size + a flat instruction list ready for `svgEmbed.ts`.
+// Parses SVG text into natural size + a flat instruction list ready for `embed.ts`.
 export const parseSvgDocument = (svgText: string): ParsedSvgDocument => {
     const root = parseSvgRoot(svgText);
     const size = resolveSvgSize(root);

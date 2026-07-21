@@ -21,7 +21,7 @@ export interface ParsedSvgSize {
      * numeric width/height (the overwhelmingly common case for hand-authored
      * icon SVGs) — but can differ hugely from it otherwise (e.g. a CAD/
      * LibreOffice Draw export with `width="297mm" viewBox="0 0 29700 21000"`,
-     * a 1:100 ratio). svgEmbed.ts's root-matrix scale must divide by *this*,
+     * a 1:100 ratio). embed.ts's root-matrix scale must divide by *this*,
      * never by the display `width`/`height` — dividing by the wrong one still
      * "works" (no crash) but silently scales all content by the wrong
      * factor, which if large enough effectively zooms into one corner of the
@@ -29,7 +29,7 @@ export interface ParsedSvgSize {
      */
     readonly viewBoxWidth: number;
     readonly viewBoxHeight: number;
-    // The root <svg>'s own raw `preserveAspectRatio` attribute (unparsed — svgEmbed.ts feeds it straight into `computeViewBoxTransform`), or `null` if absent (defaults to "xMidYMid meet").
+    // The root <svg>'s own raw `preserveAspectRatio` attribute (unparsed — embed.ts feeds it straight into `computeViewBoxTransform`), or `null` if absent (defaults to "xMidYMid meet").
     readonly preserveAspectRatio: string | null;
 }
 
@@ -42,7 +42,7 @@ export type LineJoin = 'miter' | 'round' | 'bevel';
 /*
  * Matches @libpdf/core's own `BlendMode` type (PascalCase) rather than
  * importing it directly — this parsing layer stays library-agnostic, same as
- * the rest of this file; svgEmbed.ts passes the value straight through.
+ * the rest of this file; embed.ts passes the value straight through.
  */
 export type BlendMode =
     | 'Normal'
