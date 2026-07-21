@@ -1,7 +1,6 @@
 import { ops } from '@libpdf/core';
 
 import { type ImageInstruction, type Matrix2D } from '@svg-pdf/core';
-import { normalizeImageForEmbed } from '../normalizeImage';
 import { decodeDataUri, EXTERNAL_URL_RE } from './dataUri';
 import { concat, type DrawContext, FLIP_Y } from './drawContext';
 
@@ -35,11 +34,8 @@ export const drawImage = async (
     }
     let pdfImage;
     try {
-        const embedBytes = await normalizeImageForEmbed(
-            decoded.bytes.buffer as ArrayBuffer,
-            decoded.mimeType,
-        );
-        pdfImage = ctx.doc.embedImage(new Uint8Array(embedBytes));
+        const embedBytes = await ctx.normalizeImage(decoded.bytes, decoded.mimeType);
+        pdfImage = ctx.doc.embedImage(embedBytes);
     } catch {
         ctx.warnings.push(
             '<image> could not be decoded (unsupported or corrupt embedded image data) and was skipped',

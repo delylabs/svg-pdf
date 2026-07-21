@@ -1059,6 +1059,38 @@ describe('embedSvgInPdf', () => {
             });
             expect(fetchImage).not.toHaveBeenCalled();
         });
+
+        it('warns and skips a non-JPEG/PNG image when no normalizeImage is supplied (no OffscreenCanvas in Node)', async () => {
+            const doc = LibPDF.create();
+            const webpDataUri = `data:image/webp;base64,${Buffer.from('not-a-real-image').toString('base64')}`;
+            const result = await embedSvgInPdf(doc, {
+                svgText: `<svg viewBox="0 0 100 100"><image href="${webpDataUri}" width="10" height="10"/></svg>`,
+                rotation: 0,
+            });
+            expect(result.warnings.some((w) => w.includes('could not be decoded'))).toBe(true);
+            const content = getPageContentText(doc, 0);
+            expect(content).not.toMatch(/Do\b/);
+        });
+
+        it('embeds a non-JPEG/PNG image by calling the caller-supplied normalizeImage', async () => {
+            const doc = LibPDF.create();
+            const webpDataUri = `data:image/webp;base64,${Buffer.from('not-a-real-image').toString('base64')}`;
+            const pngBase64 = ONE_PIXEL_PNG_DATA_URI.slice(ONE_PIXEL_PNG_DATA_URI.indexOf(',') + 1);
+            const pngBytes = new Uint8Array(Buffer.from(pngBase64, 'base64'));
+            const normalizeImage = vi.fn(async () => pngBytes);
+            const result = await embedSvgInPdf(doc, {
+                svgText: `<svg viewBox="0 0 100 100"><image href="${webpDataUri}" width="10" height="10"/></svg>`,
+                rotation: 0,
+                normalizeImage,
+            });
+            expect(normalizeImage).toHaveBeenCalledWith(
+                new Uint8Array(Buffer.from('not-a-real-image')),
+                'image/webp',
+            );
+            expect(result.warnings).toEqual([]);
+            const content = getPageContentText(doc, 0);
+            expect(content).toMatch(/\/\w+ Do/);
+        });
     });
 
     describe('<a href> link annotations', () => {

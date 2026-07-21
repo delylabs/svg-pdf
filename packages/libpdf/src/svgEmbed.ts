@@ -19,6 +19,7 @@ import { drawText } from './draw/drawText';
 import { drawTextPath } from './draw/drawTextPath';
 import { createLinkTracker } from './draw/linkAnnotations';
 import { resolveTextLayout } from './draw/textLayout';
+import { normalizeImageForEmbed } from './normalizeImage';
 import { fitImageToPage, type PageOrientation, resolvePageOrientation } from './pageGeometry';
 import { buildMarkerFormXObject } from './resources/marker';
 import { normalizeRotation } from './rotation';
@@ -28,6 +29,9 @@ export interface EmbedSvgResult {
 }
 
 export type FetchImage = (url: string) => Promise<{ bytes: Uint8Array; mimeType: string } | null>;
+
+// Called once per decoded `<image>` whose bytes aren't already JPEG/PNG. See `embedSvgInPdf`'s doc comment for the default (`normalizeImageForEmbed`) and when a caller needs to supply their own.
+export type NormalizeImage = (bytes: Uint8Array, mimeType: string) => Promise<Uint8Array>;
 
 // Asked once per distinct (fontFamily, fontWeight, fontStyle) combination actually used in the SVG — never per glyph or per run. Returning `null` (the default, if no matching font is available) falls back to the nearest standard-14 font, same as when no `fetchFont` is supplied at all.
 export type FetchFont = (query: {
@@ -57,6 +61,16 @@ export type FetchFont = (query: {
  * their own trust boundary can pass a `fetchImage` that wraps a plain
  * `fetch`, or one with an allowlist/timeout/proxy layered on top.
  *
+ * A decoded `<image>`'s bytes are only ever embedded directly if they're
+ * already JPEG/PNG (what `@libpdf/core`'s `embedImage` understands) —
+ * anything else (WebP, ...) goes through `normalizeImage` first, which
+ * defaults to `normalizeImageForEmbed` (re-encodes via `OffscreenCanvas`,
+ * available in a browser or worker with no extra dependency). In Node
+ * (no `OffscreenCanvas`), that default throws instead, which is caught
+ * and turned into a skipped-with-warning image, same as any other decode
+ * failure — pass a `normalizeImage` function (e.g. one wrapping `sharp`)
+ * to support non-JPEG/PNG images there.
+ *
  * Text is always drawn with one of PDF's 14 standard fonts unless the
  * caller supplies `fetchFont` — this function never assumes a font is
  * available beyond those 14. When `fetchFont` is given, it's asked once
@@ -83,6 +97,7 @@ export const embedSvgInPdf = async (
         margin?: number;
         fetchImage?: FetchImage;
         fetchFont?: FetchFont;
+        normalizeImage?: NormalizeImage;
     },
 ): Promise<EmbedSvgResult> => {
     const {
@@ -94,6 +109,7 @@ export const embedSvgInPdf = async (
         margin = 0,
         fetchImage,
         fetchFont,
+        normalizeImage = normalizeImageForEmbed,
     } = svg;
 
     let parsed;
@@ -220,6 +236,7 @@ export const embedSvgInPdf = async (
         textFonts,
         textCharLayout,
         fetchImage,
+        normalizeImage,
         flowCursorX: null,
     };
 

@@ -11,31 +11,31 @@ const hasMagicBytes = (bytes: Uint8Array, magic: number[]): boolean =>
  * bytes pass through untouched (checked by magic bytes, not the declared
  * MIME type) so the common case pays no extra decode/encode cost.
  *
- * Two re-encode paths, picked at runtime rather than by build target, per
- * this project's "same code runs in Node/Browser/Worker" principle:
- * `OffscreenCanvas` (available in both the main thread and a Worker) when
- * present, `sharp` (a real Node dependency, dynamically imported so
- * browser/worker bundlers never have to resolve it) when it isn't.
+ * The re-encode path uses `OffscreenCanvas` (available in both the main
+ * thread and a Worker), so this default works out of the box in a browser
+ * or worker with no extra dependency. In Node (no `OffscreenCanvas`) it
+ * throws instead of silently failing — `drawImage.ts` catches that and
+ * skips the image with a warning, same fail-safe policy as everywhere
+ * else. A Node caller who needs non-JPEG/PNG images can pass their own
+ * `normalizeImage` to `embedSvgInPdf` (e.g. wrapping `sharp`) — this
+ * function deliberately doesn't depend on any Node-only image library
+ * itself, so `@svg-pdf/libpdf` has nothing that breaks a browser bundle.
  */
 export const normalizeImageForEmbed = async (
-    buffer: ArrayBuffer,
-    type: string,
-): Promise<ArrayBuffer> => {
-    const bytes = new Uint8Array(buffer);
+    bytes: Uint8Array,
+    mimeType: string,
+): Promise<Uint8Array> => {
     if (hasMagicBytes(bytes, JPEG_MAGIC) || hasMagicBytes(bytes, PNG_MAGIC)) {
-        return buffer;
+        return bytes;
     }
 
     if (typeof OffscreenCanvas === 'undefined') {
-        const { default: sharp } = await import('sharp');
-        const pngBuffer = await sharp(bytes).png().toBuffer();
-        return pngBuffer.buffer.slice(
-            pngBuffer.byteOffset,
-            pngBuffer.byteOffset + pngBuffer.byteLength,
-        ) as ArrayBuffer;
+        throw new Error(
+            `Cannot decode "${mimeType}" images without OffscreenCanvas (unavailable in this environment) — pass a normalizeImage function to embedSvgInPdf to handle this format`,
+        );
     }
 
-    const bitmap = await createImageBitmap(new Blob([buffer], { type }));
+    const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: mimeType }));
     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Could not create canvas for image conversion');
@@ -43,5 +43,5 @@ export const normalizeImageForEmbed = async (
     bitmap.close();
 
     const pngBlob = await canvas.convertToBlob({ type: 'image/png' });
-    return pngBlob.arrayBuffer();
+    return new Uint8Array(await pngBlob.arrayBuffer());
 };

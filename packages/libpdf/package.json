@@ -9,8 +9,12 @@
         ".": "./src/index.ts"
     },
     "dependencies": {
-        "@svg-pdf/core": "*",
-        "@libpdf/core": "^0.4.1",
-        "sharp": "^0.33.0"
+        "@svg-pdf/core": "*"
+    },
+    "peerDependencies": {
+        "@libpdf/core": "^0.4.1"
+    },
+    "devDependencies": {
+        "@libpdf/core": "^0.4.1"
     }
 }

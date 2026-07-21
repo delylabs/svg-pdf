@@ -87,12 +87,7 @@ export const resolveGradientDef = (
     if (hrefId && !visited.has(hrefId) && visited.size < MAX_USE_DEPTH) {
         const baseEl = idMap.get(hrefId);
         if (baseEl) {
-            base = resolveGradientDef(
-                baseEl,
-                idMap,
-                cssRules,
-                new Set(visited).add(id ?? hrefId),
-            );
+            base = resolveGradientDef(baseEl, idMap, cssRules, new Set(visited).add(id ?? hrefId));
         }
     }
 
