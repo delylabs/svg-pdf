@@ -5,7 +5,8 @@ import {
     applyTextTransform,
     collectDirectText,
     hasUnencodableChar,
-    parseLengthOrEm,
+    parseLengthOrEmList,
+    parseNumberList,
     resolvePaint,
     resolveStandardFont,
 } from '../style/paint';
@@ -223,8 +224,18 @@ export function walkTextElement(
     const hasOwnY = el.hasAttribute('y');
     const ownX = hasOwnX ? num(el.getAttribute('x')) : cursorX;
     const ownY = hasOwnY ? num(el.getAttribute('y')) : cursorY;
-    const x = ownX + parseLengthOrEm(el.getAttribute('dx'), paint.fontSize);
-    const y = ownY + parseLengthOrEm(el.getAttribute('dy'), paint.fontSize);
+    const dxList = parseLengthOrEmList(el.getAttribute('dx'), paint.fontSize);
+    const dyList = parseLengthOrEmList(el.getAttribute('dy'), paint.fontSize);
+    const rotateList = parseNumberList(el.getAttribute('rotate'));
+    const x = ownX + (dxList[0] ?? 0);
+    const y = ownY + (dyList[0] ?? 0);
+    /*
+     * A single dx/dy value is identical to shifting the whole run once (see
+     * `x`/`y` above), but `rotate` isn't — PDF text rotation is a per-`Tj`
+     * matrix, so even one value forces per-character drawing (see
+     * `charDx`/`charDy`/`charRotate`'s doc comment in types.ts).
+     */
+    const hasPerChar = dxList.length > 1 || dyList.length > 1 || rotateList.length > 0;
 
     // Warning-purposes only (unencodable chars / stroke-on-text / gradient fallback) — the actual drawn text below is built per direct-text-node run, not from this merged string.
     const warnText = applyTextTransform(
@@ -292,6 +303,23 @@ export function walkTextElement(
                     wordSpacing: paint.wordSpacing,
                     continuesFlow: isOwnFirstRun ? !isFirstInSequence && !hasOwnX : true,
                     startsNewChunk: isOwnFirstRun ? isFirstInSequence || hasOwnX || hasOwnY : false,
+                    /*
+                     * Only this element's first direct-text-node run gets
+                     * the per-char lists — same reasoning as `x`/`y` above,
+                     * which only really seed that first run's position
+                     * before later sibling runs take over via the flow
+                     * cursor instead. A dx/dy/rotate spanning further than
+                     * one run (e.g. across a nested <tspan> boundary) isn't
+                     * tracked, consistent with this file's existing
+                     * "coarser, per-run approximation" scope everywhere
+                     * else (see `startsNewChunk`'s doc comment above).
+                     */
+                    ...(hasPerChar &&
+                        isOwnFirstRun && {
+                            ...(dxList.length > 0 && { charDx: dxList }),
+                            ...(dyList.length > 0 && { charDy: dyList }),
+                            ...(rotateList.length > 0 && { charRotate: rotateList }),
+                        }),
                 });
                 firstChild = false;
             }

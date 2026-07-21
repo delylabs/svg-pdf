@@ -1,7 +1,7 @@
 import { PDF as LibPDF } from '@libpdf/core';
 import * as fs from 'fs';
 import * as path from 'path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import { embedSvgInPdf } from '../svgEmbed';
 import { diffImages, encodePng } from './visual/diff';
@@ -11,7 +11,7 @@ const FIXTURES_DIR = path.join(__dirname, '../../../../test-fixtures/custom');
 const DEBUG_OUT_DIR = path.join(__dirname, '../../../../test-fixtures/visual-baselines/.debug');
 
 const TARGET_WIDTH = 800;
-const MAX_MISMATCH_RATIO = 0.12;
+const MAX_MISMATCH_RATIO = 0.05;
 
 /*
  * Fixtures whose root exercises an SVG feature svg-pdf doesn't parse yet
@@ -25,6 +25,12 @@ const KNOWN_UNSUPPORTED_ROOT: Record<string, string> = {};
 const fixtures = fs
     .readdirSync(FIXTURES_DIR)
     .filter((name) => name.endsWith('.svg') && !(name in KNOWN_UNSUPPORTED_ROOT));
+
+// Collected instead of logged per-test, so the mismatch ratios print as one block instead of a "stdout | ..." header per fixture.
+const mismatchSummary: string[] = [];
+afterAll(() => {
+    console.log(mismatchSummary.join('\n'));
+});
 
 describe('SVG-vs-PDF visual regression (custom fixtures)', () => {
     it.each(fixtures)('%s renders close to its source SVG', async (fixtureName) => {
@@ -40,6 +46,8 @@ describe('SVG-vs-PDF visual regression (custom fixtures)', () => {
         const pdfRaster = await rasterizePdfPage(pdfBytes, 0, scale);
 
         const result = diffImages(svgRaster, pdfRaster);
+
+        mismatchSummary.push(`${fixtureName}: ${(result.mismatchRatio * 100).toFixed(2)}% mismatch`);
 
         if (result.mismatchRatio > MAX_MISMATCH_RATIO) {
             fs.mkdirSync(DEBUG_OUT_DIR, { recursive: true });

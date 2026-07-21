@@ -43,6 +43,36 @@ export const drawText = (
         },
         currentMatrix,
     );
+    const charLayout = ctx.textCharLayout.get(instruction);
+    if (charLayout) {
+        /*
+         * Per-character `dx`/`dy`/`rotate` (see `charDx`/`charDy`/
+         * `charRotate`'s doc comment on `TextInstruction` in types.ts) —
+         * each character needs its own position and rotation, so it's
+         * drawn with its own `drawText()` call instead of one `Tj` with
+         * Tc/Tw, same approach as `drawTextPath.ts`. `positions[i].dx`/
+         * `.dy` are already offsets from this run's own start x/y (see
+         * `computeCharLayout` in `textLayout.ts`), so letterSpacing/
+         * wordSpacing are already baked in and no Tc/Tw ops are needed here.
+         */
+        const chars = Array.from(instruction.text);
+        const font = ctx.textFonts.get(instruction) ?? instruction.font;
+        for (let i = 0; i < chars.length; i++) {
+            const pos = charLayout.positions[i];
+            ctx.page.drawOperators([ops.pushGraphicsState(), concat(FLIP_Y)]);
+            ctx.page.drawText(chars[i], {
+                x: startX + anchorOffsetX + pos.dx,
+                y: -(instruction.y + pos.dy),
+                rotate: { angle: -pos.rotate },
+                font,
+                size: instruction.fontSize,
+                color: toPdfColor(instruction.fill),
+                opacity: instruction.fillOpacity,
+            });
+            ctx.page.drawOperators([ops.popGraphicsState()]);
+        }
+        return;
+    }
     const spacingOps = [
         ...(instruction.letterSpacing !== 0 ? [ops.setCharSpacing(instruction.letterSpacing)] : []),
         ...(instruction.wordSpacing !== 0 ? [ops.setWordSpacing(instruction.wordSpacing)] : []),

@@ -16,6 +16,7 @@ import {
 } from '@svg-pdf/core';
 import { type FetchImage } from '../svgEmbed';
 import { type LinkTracker } from './linkAnnotations';
+import { type CharLayout } from './textLayout';
 
 export const concat = (m: Matrix2D): ReturnType<typeof ops.concatMatrix> =>
     ops.concatMatrix(m.a, m.b, m.c, m.d, m.e, m.f);
@@ -48,6 +49,7 @@ export interface DrawContext {
     readonly textWidths: WeakMap<TextInstruction, number>;
     readonly textAnchorOffsets: WeakMap<TextInstruction, number>;
     readonly textFonts: WeakMap<TextInstruction, FontInput>;
+    readonly textCharLayout: WeakMap<TextInstruction, CharLayout>;
     readonly fetchImage: FetchImage | undefined;
     // Running x-cursor for <tspan>-without-its-own-x "flow" runs (see `continuesFlow`'s doc comment on `TextInstruction` in `@svg-pdf/core`'s types.ts) — only read when the next 'text' instruction is actually flagged, so unrelated text blocks never leak into each other.
     flowCursorX: number | null;

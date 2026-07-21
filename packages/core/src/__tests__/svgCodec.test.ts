@@ -681,6 +681,36 @@ describe('parseSvgDocument (text)', () => {
         expect(texts[1]).toMatchObject({ text: 'B', x: 5, y: 22 });
     });
 
+    it('omits charDx/charDy/charRotate for a plain scalar dx/dy (the fast draw path stays untouched)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><text x="5" y="10" dx="3" dy="4">Hi</text></svg>',
+        );
+        expect(textsOf(doc)[0]).toMatchObject({ x: 8, y: 14 });
+        expect(textsOf(doc)[0].charDx).toBeUndefined();
+        expect(textsOf(doc)[0].charDy).toBeUndefined();
+        expect(textsOf(doc)[0].charRotate).toBeUndefined();
+    });
+
+    it('attaches charDx/charDy for a multi-value dx/dy list', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><text x="5" y="10" dx="1 2 3" dy="4,5">Hi</text></svg>',
+        );
+        expect(textsOf(doc)[0]).toMatchObject({
+            x: 6,
+            y: 14,
+            charDx: [1, 2, 3],
+            charDy: [4, 5],
+        });
+    });
+
+    it('attaches charRotate even for a single rotate value (PDF text rotation is per-run, not per-glyph)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><text x="5" y="10" rotate="15">Hi</text></svg>',
+        );
+        expect(textsOf(doc)[0]).toMatchObject({ charRotate: [15] });
+        expect(textsOf(doc)[0].charDx).toBeUndefined();
+    });
+
     it('marks a sole/first tspan (even without its own x) as not continuing a flow', () => {
         const doc = parseSvgDocument(
             '<svg viewBox="0 0 100 100"><text x="5" y="10"><tspan>Hello</tspan></text></svg>',

@@ -112,6 +112,29 @@ export const parseLengthOrEm = (raw: string | null, fontSize: number): number =>
     return Number.isNaN(parsed) ? 0 : parsed;
 };
 
+const LIST_SEPARATOR_RE = /[\s,]+/;
+
+/*
+ * Per-character `dx`/`dy` list form (SVG allows a whole list, one value per
+ * character, not just a single shift for the whole run) — each entry parsed
+ * the same em-aware way as the scalar `parseLengthOrEm` above.
+ */
+export const parseLengthOrEmList = (raw: string | null, fontSize: number): number[] =>
+    (raw ?? '')
+        .trim()
+        .split(LIST_SEPARATOR_RE)
+        .filter((s) => s !== '')
+        .map((s) => parseLengthOrEm(s, fontSize));
+
+// Per-character `rotate` list on <text>/<tspan> — always plain degrees, no `em`/unit support per spec.
+export const parseNumberList = (raw: string | null): number[] =>
+    (raw ?? '')
+        .trim()
+        .split(LIST_SEPARATOR_RE)
+        .filter((s) => s !== '')
+        .map((s) => parseFloat(s))
+        .filter((n) => !Number.isNaN(n));
+
 /*
  * Maps CSS font-family/-weight/-style to one of PDF's 14 standard fonts —
  * there's no font-matching/embedding subsystem here (see the `<text>`

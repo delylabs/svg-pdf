@@ -215,6 +215,23 @@ export interface TextInstruction {
      * spec even though the x-cursor still isn't reset.
      */
     readonly startsNewChunk: boolean;
+    /*
+     * Per-character `dx`/`dy`/`rotate` lists (SVG allows one value per
+     * character, not just a single shift for the whole run) — set only
+     * when the run actually needs per-character drawing: 2+ `dx`/`dy`
+     * values, or any `rotate` at all (PDF text rotation is a per-`Tj`-call
+     * matrix, not per-glyph, so even one `rotate` value forces this path).
+     * A single-value `dx`/`dy` list is mathematically identical to
+     * shifting the whole run once (see `x`/`y` above), so it's folded into
+     * those instead and these three stay `undefined` — the overwhelmingly
+     * common case draws exactly as it did before this field existed.
+     * Missing `dx`/`dy` entries default to 0 per character; a missing
+     * `rotate` entry repeats the list's last value, both per spec. See
+     * `draw/textLayout.ts`'s `computeCharLayout` for how these are walked.
+     */
+    readonly charDx?: readonly number[];
+    readonly charDy?: readonly number[];
+    readonly charRotate?: readonly number[];
 }
 
 /*

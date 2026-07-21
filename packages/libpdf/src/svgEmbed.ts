@@ -196,7 +196,7 @@ export const embedSvgInPdf = async (
         return xobject;
     };
 
-    const { textWidths, textAnchorOffsets, textFonts } = await resolveTextLayout(
+    const { textWidths, textAnchorOffsets, textFonts, textCharLayout } = await resolveTextLayout(
         instructions,
         fontFaces,
         doc,
@@ -218,6 +218,7 @@ export const embedSvgInPdf = async (
         textWidths,
         textAnchorOffsets,
         textFonts,
+        textCharLayout,
         fetchImage,
         flowCursorX: null,
     };

@@ -25,11 +25,63 @@ const findFontFaceMatch = (
             face.fontStyle.trim().toLowerCase() === fontStyle.trim().toLowerCase(),
     ) ?? null;
 
+export interface CharPosition {
+    readonly dx: number;
+    readonly dy: number;
+    readonly rotate: number;
+}
+
+export interface CharLayout {
+    readonly positions: readonly CharPosition[];
+    readonly totalWidth: number;
+}
+
 export interface TextLayout {
     readonly textWidths: WeakMap<TextInstruction, number>;
     readonly textAnchorOffsets: WeakMap<TextInstruction, number>;
     readonly textFonts: WeakMap<TextInstruction, FontInput>;
+    readonly textCharLayout: WeakMap<TextInstruction, CharLayout>;
 }
+
+/*
+ * Per-character layout for a run with `charDx`/`charDy`/`charRotate` (see
+ * their doc comment on `TextInstruction` in types.ts) — mirrors
+ * `drawTextPath.ts`'s own cumulative-advance loop, but in plain x/y space
+ * instead of along a path. `dx[i]` is a one-time shift applied at character
+ * `i` (missing entries default to 0, per spec); the run's `x` continues
+ * advancing normally afterward by each glyph's width, so `positions[i].dx`
+ * is that character's offset from the run's own start `x` (not a per-char
+ * delta) — `drawText.ts` uses it directly as a draw position. `dy` works
+ * the same way but has no natural per-character advance to add (horizontal
+ * text only), and `rotate` repeats its own list's last value for any
+ * character past its end, also per spec.
+ */
+export const computeCharLayout = (
+    text: string,
+    font: FontInput,
+    fontSize: number,
+    letterSpacing: number,
+    wordSpacing: number,
+    charDx: readonly number[] = [],
+    charDy: readonly number[] = [],
+    charRotate: readonly number[] = [],
+): CharLayout => {
+    const chars = Array.from(text);
+    const positions: CharPosition[] = [];
+    let x = 0;
+    let y = 0;
+    for (let i = 0; i < chars.length; i++) {
+        x += charDx[i] ?? 0;
+        y += charDy[i] ?? 0;
+        const rotate = charRotate[i] ?? charRotate[charRotate.length - 1] ?? 0;
+        positions.push({ dx: x, dy: y, rotate });
+        x +=
+            measureText(chars[i], font, fontSize) +
+            letterSpacing +
+            (chars[i] === ' ' ? wordSpacing : 0);
+    }
+    return { positions, totalWidth: x };
+};
 
 /*
  * `text-anchor` applies to a whole text chunk (every run back to the
@@ -65,6 +117,7 @@ export const resolveTextLayout = async (
     const textWidths = new WeakMap<TextInstruction, number>();
     const textAnchorOffsets = new WeakMap<TextInstruction, number>();
     const textFonts = new WeakMap<TextInstruction, FontInput>();
+    const textCharLayout = new WeakMap<TextInstruction, CharLayout>();
 
     const embeddedFontCache = new Map<string, EmbeddedFont | null>();
     let chunk: TextInstruction[] = [];
@@ -141,16 +194,32 @@ export const resolveTextLayout = async (
          * so text-anchor/flow-cursor math stays exact instead of drifting
          * when spacing is non-zero.
          */
-        const numSpaces = (instruction.text.match(/ /g) ?? []).length;
-        const width =
-            measureText(instruction.text, font, instruction.fontSize) +
-            instruction.letterSpacing * instruction.text.length +
-            instruction.wordSpacing * numSpaces;
+        let width: number;
+        if (instruction.charDx || instruction.charDy || instruction.charRotate) {
+            const charLayout = computeCharLayout(
+                instruction.text,
+                font,
+                instruction.fontSize,
+                instruction.letterSpacing,
+                instruction.wordSpacing,
+                instruction.charDx,
+                instruction.charDy,
+                instruction.charRotate,
+            );
+            textCharLayout.set(instruction, charLayout);
+            width = charLayout.totalWidth;
+        } else {
+            const numSpaces = (instruction.text.match(/ /g) ?? []).length;
+            width =
+                measureText(instruction.text, font, instruction.fontSize) +
+                instruction.letterSpacing * instruction.text.length +
+                instruction.wordSpacing * numSpaces;
+        }
         textWidths.set(instruction, width);
         if (instruction.startsNewChunk) flushChunk();
         chunk.push(instruction);
     }
     flushChunk();
 
-    return { textWidths, textAnchorOffsets, textFonts };
+    return { textWidths, textAnchorOffsets, textFonts, textCharLayout };
 };

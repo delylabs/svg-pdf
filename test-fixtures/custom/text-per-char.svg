@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+  <rect x="2%" y="2%" width="96%" height="96%" fill="none" stroke="purple" stroke-width="2" stroke-dasharray="6 3"/>
+  <text x="20" y="40" font-size="16" fill="purple">per-character dx/dy/rotate lists</text>
+  <text x="20" y="90" font-size="28" fill="crimson" dx="0 6 12 18 24 30 36" dy="0 -4 -8 -4 0 4 8">Staircase</text>
+  <text x="20" y="160" font-size="28" fill="darkgreen" rotate="0 15 30 45 60">Fanned</text>
+</svg>
