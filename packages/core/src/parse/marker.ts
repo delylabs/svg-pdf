@@ -105,6 +105,11 @@ export const emitMarkerInstructions = (
     if (!MARKER_ELIGIBLE_ELEMENTS.has(el.tagName.toLowerCase())) return;
     const refs = resolveMarkerRefs(el, ctx);
     if (!refs.start && !refs.mid && !refs.end) return;
+    if (paint.paintOrder[paint.paintOrder.length - 1] !== 'markers') {
+        ctx.warnings.push(
+            'paint-order with markers before fill or stroke is not supported — markers are always drawn last',
+        );
+    }
 
     const defFor = (refId: string | null): MarkerDef | null => {
         if (!refId) return null;

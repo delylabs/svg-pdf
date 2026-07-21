@@ -24,6 +24,8 @@ export type {
     MarkerDef,
     MarkerInstruction,
     Paint,
+    PaintOrder,
+    PaintOrderElement,
     ParsedSvgDocument,
     ParsedSvgSize,
     PatternDef,
@@ -38,9 +40,11 @@ export type {
     TextInstruction,
     TextPathInstruction,
     TextTransform,
+    VectorEffect,
 } from './types';
 
 export {
+    getMatrixScale,
     IDENTITY_MATRIX,
     invertMatrix,
     isIdentityMatrix,
@@ -88,6 +92,7 @@ export {
 } from './geometry/pathLength';
 
 export { parseSvgColor, type RgbColor } from './style/color';
+export { DEFAULT_PAINT_ORDER, parsePaintOrder } from './style/paint';
 
 export type {
     GradientDef,

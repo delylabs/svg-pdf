@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 160">
+    <defs>
+        <path id="arc" d="M 20 145 A 125 125 0 0 1 280 145" fill="none" stroke="#e0e0e0" stroke-width="2" />
+    </defs>
+    <use href="#arc" />
+    <text font-size="16" fill="#2c3e50">
+        <textPath href="#arc" startOffset="5%">
+            Curved <tspan fill="#e74c3c" font-weight="bold">styled tspan</tspan> text along path
+        </textPath>
+    </text>
+</svg>

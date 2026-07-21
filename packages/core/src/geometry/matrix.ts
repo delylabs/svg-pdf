@@ -56,6 +56,20 @@ export const invertMatrix = (m: Matrix2D): Matrix2D => {
     };
 };
 
+/*
+ * Computes the overall geometric scale factor of a 2D affine matrix — used
+ * by `vector-effect="non-scaling-stroke"` to adjust stroke width so line
+ * width remains constant under CTM scaling.
+ */
+export const getMatrixScale = (m: Matrix2D): number => {
+    const det = Math.abs(m.a * m.d - m.b * m.c);
+    if (det > 0) return Math.sqrt(det);
+    const sx = Math.hypot(m.a, m.b);
+    const sy = Math.hypot(m.c, m.d);
+    const avg = (sx + sy) / 2;
+    return avg > 0 ? avg : 1;
+};
+
 const NUMBER_RE = /-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g;
 
 export const parseFloats = (input: string): number[] => (input.match(NUMBER_RE) ?? []).map(Number);

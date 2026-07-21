@@ -15,6 +15,7 @@ import {
     type PatternDef,
     type SvgInstruction,
     type TextInstruction,
+    type TextPathInstruction,
 } from '@svg-pdf/core';
 import { type FetchFont, type FetchImage, type NormalizeImage } from '../svgEmbed';
 import { buildMarkerFormXObject } from '../resources/marker';
@@ -52,12 +53,14 @@ export interface DrawContext {
     readonly link: LinkTracker;
     readonly textWidths: WeakMap<TextInstruction, number>;
     readonly textAnchorOffsets: WeakMap<TextInstruction, number>;
-    readonly textFonts: WeakMap<TextInstruction, FontInput>;
+    readonly textFonts: WeakMap<TextInstruction | TextPathInstruction, FontInput>;
     readonly textCharLayout: WeakMap<TextInstruction, CharLayout>;
     readonly fetchImage: FetchImage | undefined;
     readonly normalizeImage: NormalizeImage;
     // Running x-cursor for <tspan>-without-its-own-x "flow" runs (see `continuesFlow`'s doc comment on `TextInstruction` in `@svg-pdf/core`'s types.ts) — only read when the next 'text' instruction is actually flagged, so unrelated text blocks never leak into each other.
     flowCursorX: number | null;
+    // Running distance cursor for <textPath> runs continuing a flow along a path.
+    textPathDistance: number | null;
     /*
      * How many `<image>`-with-SVG-payload documents deep this context is
      * nested (0 for the top-level document). Used by `drawImage.ts` to cap
@@ -146,6 +149,7 @@ export const buildDrawContext = async (options: {
         fetchImage,
         normalizeImage,
         flowCursorX: null,
+        textPathDistance: null,
         embedDepth,
     };
 };

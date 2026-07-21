@@ -4,10 +4,13 @@ import type {
     LineCap,
     LineJoin,
     Paint,
+    PaintOrder,
+    PaintOrderElement,
     PatternDef,
     ShapePaint,
     StandardFontName,
     TextTransform,
+    VectorEffect,
 } from '../types';
 import { parseFloats } from '../geometry/matrix';
 import { CSS_NAMED_COLORS, parseSvgColor } from './color';
@@ -35,6 +38,36 @@ const CSS_BLEND_MODES: Record<string, BlendMode> = {
     luminosity: 'Luminosity',
 };
 
+export const DEFAULT_PAINT_ORDER: PaintOrder = ['fill', 'stroke', 'markers'];
+
+/*
+ * Parses SVG `paint-order`. Per spec: keywords `normal`, `fill`, `stroke`,
+ * `markers` control the order in which shape layers paint. Missing keywords
+ * are appended in their default order (`fill`, then `stroke`, then `markers`).
+ */
+export const parsePaintOrder = (raw: string | null, inherited: PaintOrder): PaintOrder => {
+    if (!raw) return inherited;
+    const trimmed = raw.trim().toLowerCase();
+    if (trimmed === '' || trimmed === 'normal') return DEFAULT_PAINT_ORDER;
+    const tokens = trimmed.split(/[\s,]+/);
+    const result: PaintOrderElement[] = [];
+    for (const token of tokens) {
+        if (
+            (token === 'fill' || token === 'stroke' || token === 'markers') &&
+            !result.includes(token)
+        ) {
+            result.push(token);
+        }
+    }
+    if (result.length === 0) return inherited;
+    for (const defaultElement of DEFAULT_PAINT_ORDER) {
+        if (!result.includes(defaultElement)) {
+            result.push(defaultElement);
+        }
+    }
+    return result;
+};
+
 export const DEFAULT_PAINT: ShapePaint = {
     fill: CSS_NAMED_COLORS.black,
     fillOpacity: 1,
@@ -47,6 +80,8 @@ export const DEFAULT_PAINT: ShapePaint = {
     fillRule: 'nonzero',
     dashArray: null,
     dashOffset: 0,
+    paintOrder: DEFAULT_PAINT_ORDER,
+    vectorEffect: 'none',
     blendMode: 'Normal',
     fontSize: 16,
     fontFamily: '',
@@ -247,6 +282,8 @@ export const resolvePaint = (el: Element, inherited: ShapePaint, ctx: PaintConte
     const visibilityRaw = readPresentation(el, 'visibility', ctx.cssRules);
     const dashArrayRaw = readPresentation(el, 'stroke-dasharray', ctx.cssRules);
     const dashOffsetRaw = readPresentation(el, 'stroke-dashoffset', ctx.cssRules);
+    const paintOrderRaw = readPresentation(el, 'paint-order', ctx.cssRules);
+    const vectorEffectRaw = readPresentation(el, 'vector-effect', ctx.cssRules);
     // `mix-blend-mode` is CSS-only, not an SVG presentation attribute — a bare `mix-blend-mode="multiply"` attribute is inert in browsers.
     const blendModeRaw = readCssOnly(el, 'mix-blend-mode', ctx.cssRules);
     const fontSizeRaw = readPresentation(el, 'font-size', ctx.cssRules);
@@ -282,6 +319,13 @@ export const resolvePaint = (el: Element, inherited: ShapePaint, ctx: PaintConte
         fillRule: (fillRuleRaw as FillRule) ?? inherited.fillRule,
         dashArray: dashArrayRaw !== null ? parseDashArray(dashArrayRaw) : inherited.dashArray,
         dashOffset: dashOffsetRaw !== null ? parseFloat(dashOffsetRaw) || 0 : inherited.dashOffset,
+        paintOrder: parsePaintOrder(paintOrderRaw, inherited.paintOrder),
+        vectorEffect:
+            vectorEffectRaw !== null
+                ? vectorEffectRaw.trim() === 'non-scaling-stroke'
+                    ? 'non-scaling-stroke'
+                    : 'none'
+                : inherited.vectorEffect,
         // Not inherited, per CSS spec — each element defaults to 'Normal' unless it sets its own.
         blendMode: blendModeRaw
             ? (CSS_BLEND_MODES[blendModeRaw.trim().toLowerCase()] ?? 'Normal')

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120">
+    <!-- Default paint-order: fill then stroke (stroke covers 10px of inner fill) -->
+    <circle cx="60" cy="60" r="40" fill="#3498db" stroke="#e74c3c" stroke-width="20" />
+
+    <!-- Custom paint-order: stroke then fill (fill covers inner stroke) -->
+    <circle cx="180" cy="60" r="40" fill="#3498db" stroke="#e74c3c" stroke-width="20" paint-order="stroke fill" />
+</svg>

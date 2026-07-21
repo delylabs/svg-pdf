@@ -1,6 +1,11 @@
 import { type EmbeddedFont, type FontInput, measureText, type PDF as LibPDF } from '@libpdf/core';
 
-import { type FontFaceDef, type SvgInstruction, type TextInstruction } from '@svg-pdf/core';
+import {
+    type FontFaceDef,
+    type SvgInstruction,
+    type TextInstruction,
+    type TextPathInstruction,
+} from '@svg-pdf/core';
 import { type FetchFont } from '../svgEmbed';
 import { decodeDataUri } from './dataUri';
 
@@ -39,7 +44,7 @@ export interface CharLayout {
 export interface TextLayout {
     readonly textWidths: WeakMap<TextInstruction, number>;
     readonly textAnchorOffsets: WeakMap<TextInstruction, number>;
-    readonly textFonts: WeakMap<TextInstruction, FontInput>;
+    readonly textFonts: WeakMap<TextInstruction | TextPathInstruction, FontInput>;
     readonly textCharLayout: WeakMap<TextInstruction, CharLayout>;
 }
 
@@ -113,7 +118,7 @@ export const resolveTextLayout = async (
 ): Promise<TextLayout> => {
     const textWidths = new WeakMap<TextInstruction, number>();
     const textAnchorOffsets = new WeakMap<TextInstruction, number>();
-    const textFonts = new WeakMap<TextInstruction, FontInput>();
+    const textFonts = new WeakMap<TextInstruction | TextPathInstruction, FontInput>();
     const textCharLayout = new WeakMap<TextInstruction, CharLayout>();
 
     const embeddedFontCache = new Map<string, EmbeddedFont | null>();
@@ -131,9 +136,9 @@ export const resolveTextLayout = async (
         chunk = [];
     };
     for (const instruction of instructions) {
-        if (instruction.type !== 'text') continue;
+        if (instruction.type !== 'text' && instruction.type !== 'textPath') continue;
         let font: FontInput = instruction.font;
-        const key = `${instruction.fontFamily}${instruction.fontWeight}${instruction.fontStyle}`;
+        const key = `${instruction.fontFamily}\0${instruction.fontWeight}\0${instruction.fontStyle}`;
         if (!embeddedFontCache.has(key)) {
             let embedded: EmbeddedFont | null = null;
             const fontFace = findFontFaceMatch(
@@ -182,6 +187,7 @@ export const resolveTextLayout = async (
         const embedded = embeddedFontCache.get(key) ?? null;
         if (embedded) font = embedded;
         textFonts.set(instruction, font);
+        if (instruction.type === 'textPath') continue;
         /*
          * `letterSpacing`/`wordSpacing` are drawn via PDF's own `Tc`/`Tw`
          * text-state operators (see `drawText.ts`), which add their amount

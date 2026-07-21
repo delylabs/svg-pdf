@@ -30,6 +30,8 @@ This page lists which SVG features svg-pdf can turn into a PDF, which ones have 
 
 - `stroke-dasharray` (dashed/dotted line patterns).
 - `stroke-miterlimit` (controls the limit on ratio of miter length to stroke-width for miter joins, defaulting to SVG's spec default of 4).
+- `paint-order` (controls the order in which fill, stroke, and markers are drawn, e.g. drawing stroke underneath fill so a thick outline doesn't obscure the shape's interior).
+- `vector-effect="non-scaling-stroke"` (keeps a stroke's width constant in user space regardless of scaling transforms on the element or its ancestors).
 - `mix-blend-mode` (how overlapping colors combine — the same kind of "Multiply," "Screen," etc. blend modes found in image editors).
 
 ### CSS inside `<style>`
@@ -43,7 +45,7 @@ Full CSS selector support — not just simple `tag`/`.class`/`#id` selectors, bu
 - `letter-spacing`/`word-spacing`.
 - Preserving whitespace exactly as written (`xml:space="preserve"`/`white-space: pre`), instead of collapsing extra spaces the way SVG normally does.
 - Per-character positioning: `dx`/`dy`/`rotate` with a list of values on `<text>`/`<tspan>`, letting you nudge or rotate individual characters instead of a whole line.
-- `<textPath>` — text that flows along a curved line instead of a straight one.
+- `<textPath>` — text that flows along a curved line instead of a straight one, supporting custom embedded fonts (`@font-face` / `fetchFont`) and nested `<tspan>`/`<a>` elements.
 - Fonts: by default, text is drawn using one of PDF's 14 built-in standard fonts (a fixed set every PDF reader supports without needing anything extra embedded). A real, custom font is used instead if the SVG embeds one directly (`@font-face { src: url(data:...) }`), or if you supply your own font via a `fetchFont` function — see [`usage.md`](usage.md).
 
 ### Images
@@ -65,13 +67,9 @@ Grouped by _why_ each one exists, not by how severe it is — a "not yet impleme
 No technical blocker — just future work.
 
 - **`<clipPath>` content is limited to shapes, `<g>`, and `<use>`**: plain shapes work directly; a `<g>` wrapping several shapes (to union them together) and a `<use>` reusing another shape's geometry both work too, including nested combinations of the two, with any `transform`/offset along the way applied correctly. Something else inside a `<clipPath>` (like `<text>` or `<image>`) is skipped with a warning instead of being drawn wrong. If every child of a `<clipPath>` ends up skipped this way, the clip region is empty and nothing draws at all (an empty clip region hides everything, per spec) rather than drawing unclipped.
-- **Text-along-a-path (`<textPath>`)**: each character is individually positioned and rotated to follow the path's curve, starting at a given offset (`startOffset`, as a plain number or a percentage) along the path, respecting the path's own `pathLength` if it has one, and shifted by `text-anchor` the same way regular text is. It always uses a standard font rather than a custom one from `fetchFont`/`@font-face`. Two things aren't supported yet:
-    - `textLength` (stretching/compressing the text to fit an exact length) works in its default mode, which only adjusts the spacing _between_ characters. `lengthAdjust="spacingAndGlyphs"`, which would also resize the characters themselves, isn't supported — it falls back to spacing-only with a warning.
-    - Nesting a `<tspan>` inside a `<textPath>` isn't supported — its children are skipped with a warning, and only the `<textPath>`'s own direct text is used.
+- **Text-along-a-path (`<textPath>`)**: each character is individually positioned and rotated to follow the path's curve, starting at a given offset (`startOffset`, as a plain number or a percentage) along the path, respecting the path's own `pathLength` if it has one, and shifted by `text-anchor` the same way regular text is. Custom embedded fonts (`@font-face`/`fetchFont`) and nested `<tspan>` children are supported. `lengthAdjust="spacingAndGlyphs"` (which would also resize the glyphs themselves) isn't supported — it falls back to spacing-only with a warning.
 - **Opacity on a `<g>` isn't isolated**: per spec, a group's own `opacity` should render the whole group to an offscreen buffer first and only make that combined result translucent, so overlapping children inside the group still look fully solid against each other. Instead, svg-pdf multiplies the group's opacity straight into each child's own `fill-opacity`/`stroke-opacity`, so where two children inside the same opacity group overlap, that overlap ends up visibly more transparent than it should (each layer's translucency stacks). `fill-opacity`/`stroke-opacity`/`opacity` set directly on a single shape (not a group) aren't affected by this.
 - **`@media` blocks inside `<style>` are discarded, not evaluated**: any rule written inside an `@media { ... }` block is dropped before CSS matching happens, so it's never applied regardless of what the media condition says. Rules outside an `@media` block are unaffected.
-- **`paint-order`** (the CSS property that lets you draw stroke on top of fill instead of the default fill-then-stroke, useful for a thick outline that shouldn't cover a shape's interior) isn't read at all — everything always draws in the default fill-then-stroke order.
-- **`vector-effect="non-scaling-stroke"`** (keeps a stroke's width constant on screen no matter how much its shape is scaled, useful for something like a map pin whose outline should stay thin even when the map is zoomed in) isn't read at all — a stroke's width always scales along with its shape.
 
 ### Design choice
 
@@ -88,6 +86,8 @@ The specific library svg-pdf currently uses to write PDF bytes (not svg-pdf itse
 - **Pattern and marker content is limited to solid colors**: the inside of a `<pattern>` or `<marker>` can only contain shapes with a plain solid fill/stroke — not another gradient, another pattern, text, or an image nested inside it. Anything like that is skipped individually with a warning. Both are built internally from a bare list of drawing operators with no resource dictionary of their own, so there's nowhere to register a nested font/image/gradient/pattern. (This only affects what's _inside_ the pattern/marker; a marker's overall placement — its rotation, scale, position — is unrestricted.)
 - **Opacity inside a pattern/marker isn't honored**: `fill-opacity`/`stroke-opacity`/`opacity` used _inside_ a `<pattern>` or `<marker>`'s own content don't currently have any effect (drawn fully opaque instead, with a warning) — same root cause as above: no resource dictionary means no place to attach the transparency setting. Opacity on the _shape the pattern/marker is applied to_ works fine; this limitation is only about opacity used inside the pattern/marker's own artwork.
 - **`<mask>`** (hiding part of an image using a gradient of transparency) — PDF itself has an equivalent feature (soft masks), so this isn't a PDF format limitation; `@libpdf/core` just doesn't expose that capability yet. Fixable once that library (or a future alternative one svg-pdf could switch to) supports it.
+- **Arc sweep direction may be visually mirrored** (`A`/`a` path commands): `@libpdf/core`'s `drawSvgPath` flips the Y axis to convert SVG's top-left origin to PDF's bottom-left origin, and as part of that Y-flip it also inverts the `sweep-flag` on every arc. For a simple horizontal arc (e.g. a semicircle), the correct sweep to use with a flipped Y-axis is the opposite of the original, so the inversion is intentional — but it picks the opposite arc *segment* of the ellipse rather than the same arc reflected across the X-axis, which is what SVG browsers actually render. The result is that an arc that appears convex in a browser may appear concave in the PDF, or vice versa.
+
 
 ### PDF format limitation
 

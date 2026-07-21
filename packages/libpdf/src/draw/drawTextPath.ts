@@ -21,8 +21,9 @@ import { concat, type DrawContext, FLIP_Y } from './drawContext';
  * unsupported when it's requested).
  */
 export const drawTextPath = (instruction: TextPathInstruction, ctx: DrawContext): void => {
+    const font = ctx.textFonts.get(instruction) ?? instruction.font;
     const chars = Array.from(instruction.text);
-    const charWidths = chars.map((ch) => measureText(ch, instruction.font, instruction.fontSize));
+    const charWidths = chars.map((ch) => measureText(ch, font, instruction.fontSize));
     const naturalAdvance =
         charWidths.reduce((sum, w) => sum + w, 0) +
         instruction.letterSpacing * chars.length +
@@ -38,7 +39,10 @@ export const drawTextPath = (instruction: TextPathInstruction, ctx: DrawContext)
             : instruction.textAnchor === 'end'
               ? -totalAdvance
               : 0;
-    let dist = instruction.startDistance + anchorShift;
+    let dist =
+        instruction.continuesFlow && ctx.textPathDistance !== null
+            ? ctx.textPathDistance
+            : instruction.startDistance + anchorShift;
     for (let i = 0; i < chars.length; i++) {
         const ch = chars[i];
         const charWidth = charWidths[i];
@@ -56,7 +60,7 @@ export const drawTextPath = (instruction: TextPathInstruction, ctx: DrawContext)
                 x: point.x,
                 y: -point.y,
                 rotate: { angle: -(point.angle * 180) / Math.PI },
-                font: instruction.font,
+                font,
                 size: instruction.fontSize,
                 color: toPdfColor(instruction.fill),
                 opacity: instruction.fillOpacity,
@@ -69,4 +73,5 @@ export const drawTextPath = (instruction: TextPathInstruction, ctx: DrawContext)
             (ch === ' ' ? instruction.wordSpacing : 0) +
             extraPerChar;
     }
+    ctx.textPathDistance = dist;
 };

@@ -84,6 +84,11 @@ export interface PatternPaintRef {
 
 export type Paint = RgbColor | GradientPaintRef | PatternPaintRef | null;
 
+export type PaintOrderElement = 'fill' | 'stroke' | 'markers';
+export type PaintOrder = readonly PaintOrderElement[];
+
+export type VectorEffect = 'none' | 'non-scaling-stroke';
+
 export type TextAnchor = 'start' | 'middle' | 'end';
 
 export type TextTransform = 'none' | 'uppercase' | 'lowercase' | 'capitalize';
@@ -119,6 +124,8 @@ export interface ShapePaint {
     readonly fillRule: FillRule;
     readonly dashArray: readonly number[] | null;
     readonly dashOffset: number;
+    readonly paintOrder: PaintOrder;
+    readonly vectorEffect: VectorEffect;
     readonly blendMode: BlendMode;
     readonly fontSize: number;
     readonly fontFamily: string;
@@ -285,6 +292,8 @@ export interface TextPathInstruction {
     readonly wordSpacing: number;
     // Resolved `textLength` (plain number or % of the path's total length), or null if absent/invalid — see the doc comment above.
     readonly textLength: number | null;
+    readonly continuesFlow: boolean;
+    readonly startsNewChunk: boolean;
 }
 
 /*

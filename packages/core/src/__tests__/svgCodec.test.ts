@@ -1190,12 +1190,12 @@ describe('parseSvgDocument (textPath)', () => {
         expect(tp.cumLengths[tp.cumLengths.length - 1]).toBeCloseTo(100);
     });
 
-    it('warns (but still draws) when a <textPath> has nested <tspan> children', () => {
+    it('parses nested <tspan> children inside a <textPath> into separate textPath runs', () => {
         const doc = parseSvgDocument(
             '<svg viewBox="0 0 100 100"><path id="p" d="M0 0 L100 0"/><text><textPath href="#p">A<tspan>B</tspan></textPath></text></svg>',
         );
-        expect(textPathsOf(doc)).toHaveLength(1);
-        expect(doc.warnings.some((w) => w.includes('nested <tspan>'))).toBe(true);
+        expect(textPathsOf(doc)).toHaveLength(2);
+        expect(doc.warnings.some((w) => w.includes('nested <tspan>'))).toBe(false);
     });
 
     it('resolves a plain-number textLength with no warning (default lengthAdjust="spacing")', () => {

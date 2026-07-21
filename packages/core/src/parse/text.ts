@@ -114,11 +114,6 @@ function walkTextPathElement(el: Element, inherited: ShapePaint, ctx: WalkContex
         startDistance = Number.isNaN(raw) ? 0 : raw * lengthScale;
     }
 
-    if (el.children.length > 0) {
-        ctx.warnings.push(
-            '<textPath> with nested <tspan> children is not supported — only its own direct text content was used',
-        );
-    }
     const textLength = el.hasAttribute('textLength')
         ? num(el.getAttribute('textLength'), 0, totalLength)
         : null;
@@ -131,31 +126,58 @@ function walkTextPathElement(el: Element, inherited: ShapePaint, ctx: WalkContex
         }
     }
 
-    const ownText = applyTextTransform(
-        collectDirectText(el, paint.preserveWhitespace),
-        paint.textTransform,
-    );
-    const fill = resolveTextFillAndWarn(paint, ownText, ctx);
-    if (ownText && fill) {
-        ctx.instructions.push({
-            type: 'textPath',
-            text: ownText,
-            points,
-            cumLengths,
-            startDistance,
-            fontSize: paint.fontSize,
-            font: resolveStandardFont(paint.fontFamily, paint.fontWeight, paint.fontStyle),
-            fontFamily: paint.fontFamily,
-            fontWeight: paint.fontWeight,
-            fontStyle: paint.fontStyle,
-            fill,
-            fillOpacity: paint.fillOpacity,
-            textAnchor: paint.textAnchor,
-            letterSpacing: paint.letterSpacing,
-            wordSpacing: paint.wordSpacing,
-            textLength: textLength !== null && textLength > 0 ? textLength : null,
+    let isFirstRun = true;
+    const walkSubtree = (subEl: Element, subInherited: ShapePaint): void => {
+        const subPaint = resolvePaint(subEl, subInherited, ctx);
+        const childNodes = Array.from(subEl.childNodes);
+        childNodes.forEach((node, index) => {
+            if (node.nodeType === 3) {
+                let raw = node.nodeValue ?? '';
+                if (!subPaint.preserveWhitespace) {
+                    raw = raw.replace(/\s+/g, ' ');
+                    if (index === 0) raw = raw.replace(/^ /, '');
+                    if (index === childNodes.length - 1) raw = raw.replace(/ $/, '');
+                }
+                const runText = applyTextTransform(raw, subPaint.textTransform);
+                const fill = resolveTextFillAndWarn(subPaint, runText, ctx);
+                if (runText && fill && subPaint.visible) {
+                    ctx.instructions.push({
+                        type: 'textPath',
+                        text: runText,
+                        points,
+                        cumLengths,
+                        startDistance,
+                        fontSize: subPaint.fontSize,
+                        font: resolveStandardFont(
+                            subPaint.fontFamily,
+                            subPaint.fontWeight,
+                            subPaint.fontStyle,
+                        ),
+                        fontFamily: subPaint.fontFamily,
+                        fontWeight: subPaint.fontWeight,
+                        fontStyle: subPaint.fontStyle,
+                        fill,
+                        fillOpacity: subPaint.fillOpacity,
+                        textAnchor: paint.textAnchor,
+                        letterSpacing: subPaint.letterSpacing,
+                        wordSpacing: subPaint.wordSpacing,
+                        textLength: isFirstRun
+                            ? textLength !== null && textLength > 0
+                                ? textLength
+                                : null
+                            : null,
+                        continuesFlow: !isFirstRun,
+                        startsNewChunk: isFirstRun,
+                    });
+                    isFirstRun = false;
+                }
+            } else if (node.nodeType === 1) {
+                walkSubtree(node as Element, subPaint);
+            }
         });
-    }
+    };
+
+    walkSubtree(el, paint);
 }
 
 /*
