@@ -303,6 +303,42 @@ describe('parseSvgDocument', () => {
         expect(scalePush.matrix.d).toBe(2);
     });
 
+    it('gives <use> referencing a nested <svg> the same width/height override treatment as referencing a <symbol>', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><svg id="box" viewBox="0 0 10 10"><rect width="10" height="10" fill="#000"/></svg></defs><use href="#box" x="0" y="0" width="20" height="20"/></svg>',
+        );
+        expect(
+            doc.instructions.some(
+                (i) => i.type === 'pushMatrix' && i.matrix.a === 2 && i.matrix.d === 2,
+            ),
+        ).toBe(true);
+    });
+
+    it("falls back to the referenced <svg>'s own width/height when <use> omits them, instead of drawing unscaled", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><svg id="box" viewBox="0 0 10 10" width="20" height="20"><rect width="10" height="10" fill="#000"/></svg></defs><use href="#box"/></svg>',
+        );
+        const scalePush = doc.instructions.find(
+            (i) => i.type === 'pushMatrix' && i.matrix.a === i.matrix.d && i.matrix.a !== 1,
+        );
+        if (!scalePush || scalePush.type !== 'pushMatrix') throw new Error('unreachable');
+        expect(scalePush.matrix.a).toBe(2);
+        expect(scalePush.matrix.d).toBe(2);
+    });
+
+    it("ignores the referenced <svg>'s own x/y, using only the <use>'s x/y (per spec)", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><svg id="box" x="99" y="99" width="10" height="10"><rect width="10" height="10" fill="#000"/></svg></defs><use href="#box" x="5" y="5"/></svg>',
+        );
+        const offsetPush = doc.instructions.find(
+            (i) => i.type === 'pushMatrix' && i.matrix.e === 5 && i.matrix.f === 5,
+        );
+        expect(offsetPush).toBeDefined();
+        expect(doc.instructions.some((i) => i.type === 'pushMatrix' && i.matrix.e === 99)).toBe(
+            false,
+        );
+    });
+
     it('falls back to 100% of the current viewport when neither <use> nor <symbol> specify width/height', () => {
         const doc = parseSvgDocument(
             '<svg viewBox="0 0 40 20"><defs><symbol id="box" viewBox="0 0 10 10"><rect width="10" height="10" fill="#000"/></symbol></defs><use href="#box"/></svg>',
@@ -744,21 +780,83 @@ describe('parseSvgDocument (clip-path)', () => {
         });
     });
 
-    it('skips a clip-path child that has its own transform, with a warning', () => {
+    it('renders nothing (not "unclipped") when no clip child survives, with a warning', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><clipPath id="c"><text>nope</text></clipPath></defs><rect width="100" height="100" clip-path="url(#c)"/></svg>',
+        );
+        // A valid <clipPath> that resolves to zero usable paths clips away everything, per spec -- the opposite of "no clip-path at all".
+        expect(doc.instructions).toHaveLength(0);
+        expect(doc.warnings.some((w) => w.includes('<text>'))).toBe(true);
+    });
+
+    it("bakes a clip child's own transform directly into its path coordinates", () => {
         const doc = parseSvgDocument(
             '<svg viewBox="0 0 100 100"><defs><clipPath id="c"><circle cx="0" cy="0" r="20" transform="translate(50,50)"/></clipPath></defs><rect width="100" height="100" clip-path="url(#c)"/></svg>',
         );
-        // No usable clip child survived, so clipping is skipped entirely (fail-safe: draw unclipped).
-        expect(doc.instructions.map((i) => i.type)).toEqual(['shape']);
-        expect(doc.warnings.some((w) => w.includes('own transform'))).toBe(true);
+        expect(doc.instructions.map((i) => i.type)).toEqual(['pushClip', 'shape', 'popClip']);
+        const pushClip = doc.instructions[0];
+        if (pushClip.type !== 'pushClip') throw new Error('unreachable');
+        expect(pushClip.paths).toHaveLength(1);
+        // Circle's own first point (20,0) shifted by translate(50,50) -> (70,50).
+        expect(pushClip.paths[0].startsWith('M 70 50')).toBe(true);
     });
 
-    it('warns and skips when clip-path target is missing', () => {
+    it('warns and skips (draws unclipped) when clip-path target is missing', () => {
         const doc = parseSvgDocument(
             '<svg viewBox="0 0 100 100"><rect width="10" height="10" clip-path="url(#missing)"/></svg>',
         );
+        // A broken url(#id) reference means "as if clip-path weren't specified" per spec -- unlike an empty-but-valid <clipPath>, this draws normally.
         expect(doc.instructions.map((i) => i.type)).toEqual(['shape']);
         expect(doc.warnings.some((w) => w.includes('not found'))).toBe(true);
+    });
+
+    it('resolves a <use> referencing shared shape geometry inside a <clipPath>', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><circle id="shape" cx="50" cy="50" r="20"/><clipPath id="c"><use href="#shape"/></clipPath></defs><rect width="100" height="100" clip-path="url(#c)"/></svg>',
+        );
+        expect(doc.instructions.map((i) => i.type)).toEqual(['pushClip', 'shape', 'popClip']);
+        const pushClip = doc.instructions[0];
+        if (pushClip.type !== 'pushClip') throw new Error('unreachable');
+        expect(pushClip.paths).toHaveLength(1);
+    });
+
+    it("bakes a <use>'s own x/y offset into the referenced shape's path inside a <clipPath>", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><circle id="shape" cx="0" cy="0" r="20"/><clipPath id="c"><use href="#shape" x="10"/></clipPath></defs><rect width="100" height="100" clip-path="url(#c)"/></svg>',
+        );
+        const pushClip = doc.instructions[0];
+        if (pushClip.type !== 'pushClip') throw new Error('unreachable');
+        // Circle's own first point (20,0) shifted by the <use>'s x="10" -> (30,0).
+        expect(pushClip.paths[0].startsWith('M 30 0')).toBe(true);
+    });
+
+    it('recurses into a <g> wrapping multiple clip shapes', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><clipPath id="c"><g><circle cx="30" cy="30" r="10"/><rect x="50" y="50" width="10" height="10"/></g></clipPath></defs><rect width="100" height="100" clip-path="url(#c)"/></svg>',
+        );
+        const pushClip = doc.instructions[0];
+        if (pushClip.type !== 'pushClip') throw new Error('unreachable');
+        expect(pushClip.paths).toHaveLength(2);
+    });
+
+    it("bakes a <g>'s own transform into its children's paths inside a <clipPath>", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><clipPath id="c"><g transform="translate(10,10)"><circle cx="30" cy="30" r="10"/></g></clipPath></defs><rect width="100" height="100" clip-path="url(#c)"/></svg>',
+        );
+        const pushClip = doc.instructions[0];
+        if (pushClip.type !== 'pushClip') throw new Error('unreachable');
+        // Circle's own first point (cx+r, cy) = (40,30) shifted by the <g>'s translate(10,10) -> (50,40).
+        expect(pushClip.paths[0].startsWith('M 50 40')).toBe(true);
+    });
+
+    it("bakes nested <g>/<use> transforms and a referenced shape's own transform together", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><circle id="shape" cx="0" cy="0" r="10" transform="translate(5,0)"/><clipPath id="c"><g transform="translate(20,0)"><use href="#shape" x="0" y="20"/></g></clipPath></defs><rect width="100" height="100" clip-path="url(#c)"/></svg>',
+        );
+        const pushClip = doc.instructions[0];
+        if (pushClip.type !== 'pushClip') throw new Error('unreachable');
+        // Circle's own first point (10,0) -> shape's own transform (+5,0)=(15,0) -> <use> x/y (0,20)=(15,20) -> <g> transform (+20,0)=(35,20).
+        expect(pushClip.paths[0].startsWith('M 35 20')).toBe(true);
     });
 });
 
@@ -1534,5 +1632,59 @@ describe.skipIf(!hasFixtures)('parseSvgDocument (real-world-shaped fixtures)', (
         expect(doc.patterns.size).toBeGreaterThan(0);
         expect(doc.instructions.some((i) => i.type === 'pushClip')).toBe(true);
         expect(doc.instructions.some((i) => i.type === 'text')).toBe(true);
+    });
+});
+
+describe('parseSvgDocument (display/visibility)', () => {
+    it('omits an element and its whole subtree for display="none"', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><g display="none"><rect width="10" height="10"/><rect width="20" height="20"/></g><circle cx="50" cy="50" r="5"/></svg>',
+        );
+        expect(shapesOf(doc)).toHaveLength(1);
+    });
+
+    it('omits an element reached indirectly through a <use> reference for display="none"', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><rect id="r" display="none" width="10" height="10"/></defs><use href="#r"/></svg>',
+        );
+        expect(shapesOf(doc)).toHaveLength(0);
+    });
+
+    it('draws nothing for visibility="hidden" but still walks children (a descendant can turn itself back on)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><g visibility="hidden"><rect width="10" height="10"/><rect visibility="visible" width="20" height="20"/></g></svg>',
+        );
+        expect(shapesOf(doc)).toHaveLength(1);
+        expect(shapesOf(doc)[0].d).toContain('20');
+    });
+
+    it('inherits visibility="hidden" down to a plain <text> run', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><text visibility="hidden">hidden</text></svg>',
+        );
+        expect(textsOf(doc)).toHaveLength(0);
+    });
+
+    it('treats visibility="collapse" the same as "hidden"', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><rect visibility="collapse" width="10" height="10"/></svg>',
+        );
+        expect(shapesOf(doc)).toHaveLength(0);
+    });
+});
+
+describe('parseSvgDocument (stroke-miterlimit)', () => {
+    it("defaults to 4 (SVG default), not left to the PDF writer's own default", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><rect width="10" height="10" stroke="#000"/></svg>',
+        );
+        expect(shapesOf(doc)[0].miterLimit).toBe(4);
+    });
+
+    it('resolves an explicit stroke-miterlimit and inherits it to children', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><g stroke-miterlimit="8"><rect width="10" height="10" stroke="#000"/></g></svg>',
+        );
+        expect(shapesOf(doc)[0].miterLimit).toBe(8);
     });
 });

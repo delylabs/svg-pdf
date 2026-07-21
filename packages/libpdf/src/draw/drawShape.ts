@@ -69,6 +69,7 @@ export const drawShape = (
             borderOpacity: instruction.strokeOpacity,
             lineCap: instruction.lineCap,
             lineJoin: instruction.lineJoin,
+            miterLimit: instruction.miterLimit,
             ...(instruction.dashArray && {
                 dashArray: [...instruction.dashArray],
                 dashPhase: instruction.dashOffset,

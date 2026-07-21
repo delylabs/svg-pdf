@@ -85,15 +85,12 @@ export const computeCharLayout = (
 
 /*
  * `text-anchor` applies to a whole text chunk (every run back to the
- * last one with its own explicit x/y — see `startsNewChunk`'s doc
- * comment in types.ts), not to each run individually. A pre-pass groups
- * runs into chunks by document order (they're always contiguous in
- * `instructions`, since walkTextElement never interleaves a <text>
- * subtree's runs with any pushMatrix/popMatrix), measures each run once,
- * and computes one shared anchor offset per chunk from its total advance
- * width — the same two-pass "measure everything, then offset" shape
- * svg2pdf.js's TextChunk uses. `svgEmbed.ts`'s main loop just looks the
- * results up instead of computing anchor offsets per run.
+ * last one with its own explicit x/y — see `startsNewChunk`'s doc comment
+ * in types.ts), not to each run individually. A pre-pass groups runs
+ * into chunks by document order (they're always contiguous in `instructions`,
+ * since walkTextElement never interleaves a <text> subtree's runs with any
+ * pushMatrix/popMatrix), measures each run once, and computes one shared
+ * anchor offset per chunk from its total advance width.
  *
  * The same pass also resolves each run's actual font, once per distinct
  * (fontFamily, fontWeight, fontStyle) combination (cached by that key,

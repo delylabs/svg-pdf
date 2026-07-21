@@ -22,6 +22,28 @@ const MAX_MISMATCH_RATIO = 0.05;
  */
 const KNOWN_UNSUPPORTED_ROOT: Record<string, string> = {};
 
+/*
+ * `rasterizeSvg` (the "ground truth" side of every comparison below) is
+ * powered by resvg — generally excellent SVG-spec compliance, but not
+ * perfect. When a fixture's PDF output visually looks *correct* on manual
+ * inspection (and/or is independently covered by a passing parse-level unit
+ * test) while resvg's own rendering of the same source SVG is missing
+ * content, that's a resvg bug, not a svg-pdf regression — don't "fix" our
+ * code to match resvg's wrong output. Instead, write the fixture so it
+ * avoids the specific trigger while still exercising the feature under
+ * test (same approach as `symbol-viewport-percent.svg` and
+ * `clip-path-use-and-group.svg`). Known triggers so far, so a future
+ * mismatch matching one of these is recognized quickly instead of
+ * re-investigated from scratch:
+ * - A `<symbol>` whose children use percentage-based geometry (`width="50%"`
+ *   etc.) — resvg mispositions/misrenders them. See git history around
+ *   `symbol-viewport-percent.svg` for the original investigation.
+ * - A `<g>` element nested directly inside a `<clipPath>` — resvg drops it
+ *   (and everything inside it) from the clip region entirely, with or
+ *   without a `transform` on the `<g>`. A `<clipPath>` child with its own
+ *   `transform` attribute (no `<g>` wrapper) renders fine.
+ */
+
 const fixtures = fs
     .readdirSync(FIXTURES_DIR)
     .filter((name) => name.endsWith('.svg') && !(name in KNOWN_UNSUPPORTED_ROOT));

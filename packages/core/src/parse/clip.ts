@@ -1,6 +1,13 @@
-import { isIdentityMatrix, type Matrix2D, parseTransformList } from '../geometry/matrix';
-import { computeShapeBBox, shapeToPathData } from '../geometry/path';
-import { URL_REF_RE } from '../style/refs';
+import {
+    IDENTITY_MATRIX,
+    isIdentityMatrix,
+    type Matrix2D,
+    multiplyMatrix,
+    parseTransformList,
+    translateMatrix,
+} from '../geometry/matrix';
+import { computeShapeBBox, num, shapeToPathData, transformPathData } from '../geometry/path';
+import { resolveHref, URL_REF_RE } from '../style/refs';
 import { readPresentation } from '../style/stylesheet';
 import type { FillRule } from '../types';
 import type { WalkContext } from './context';
@@ -21,14 +28,78 @@ interface ResolvedClip {
     readonly bboxMatrix: Matrix2D | null;
 }
 
+const bakedPath = (d: string, m: Matrix2D): string =>
+    isIdentityMatrix(m) ? d : transformPathData(d, m);
+
 /*
- * Resolves `clip-path="url(#id)"` into concrete path data. Scoped to the
- * common real-world case — a <clipPath> containing one or more plain shapes
- * with no transform of their own (Illustrator/Figma exports overwhelmingly
- * look like this); a clip child with its own `transform`, or
- * clipPathUnits="objectBoundingBox" applied to a non-shape (e.g. a <g>)
- * target, is skipped with a warning rather than attempted, consistent with
- * the fail-safe pattern used everywhere else in this file.
+ * Collects path data from a <clipPath>'s content, recursing into <g> (a
+ * grouping wrapper, common when multiple shapes are meant to union together)
+ * and dereferencing <use> (very common in Illustrator/Figma exports:
+ * `<clipPath><use href="#shape"/></clipPath>` reusing shared geometry). Any
+ * `transform` along the way — on the <g>, the <use>, or the shape a <use>
+ * points at — as well as a <use>'s own x/y offset, is folded into a running
+ * matrix and baked directly into the resulting shape's path coordinates via
+ * `transformPathData`, since a <clipPath>'s region is built from raw path
+ * strings rather than drawn through the normal transform-stack machinery
+ * every other element uses. Any child tag this doesn't know how to turn
+ * into path data (e.g. <text>) is skipped with a warning instead of
+ * silently dropped, so a smaller-than-expected clip region always has a
+ * paper trail.
+ */
+const collectClipPaths = (
+    children: Iterable<Element>,
+    ctx: WalkContext,
+    paths: string[],
+    matrix: Matrix2D,
+): void => {
+    for (const child of children) {
+        const tag = child.tagName.toLowerCase();
+        const childMatrix = multiplyMatrix(
+            parseTransformList(child.getAttribute('transform')),
+            matrix,
+        );
+
+        if (tag === 'g') {
+            collectClipPaths(Array.from(child.children), ctx, paths, childMatrix);
+            continue;
+        }
+        if (tag === 'use') {
+            const refId = resolveHref(child);
+            const refEl = refId ? ctx.idMap.get(refId) : undefined;
+            if (!refEl || !SHAPE_ELEMENTS.has(refEl.tagName.toLowerCase())) {
+                ctx.warnings.push('<clipPath> <use> without a valid href to a shape was skipped');
+                continue;
+            }
+            const ux = num(child.getAttribute('x'), 0);
+            const uy = num(child.getAttribute('y'), 0);
+            const useMatrix = multiplyMatrix(translateMatrix(ux, uy), childMatrix);
+            const refMatrix = multiplyMatrix(
+                parseTransformList(refEl.getAttribute('transform')),
+                useMatrix,
+            );
+            const d = shapeToPathData(refEl, ctx.viewport);
+            if (d) paths.push(bakedPath(d, refMatrix));
+            continue;
+        }
+        if (!SHAPE_ELEMENTS.has(tag)) {
+            ctx.warnings.push(`<clipPath> child <${tag}> is not supported and was skipped`);
+            continue;
+        }
+        const d = shapeToPathData(child, ctx.viewport);
+        if (d) paths.push(bakedPath(d, childMatrix));
+    }
+};
+
+/*
+ * Resolves `clip-path="url(#id)"` into concrete path data. Returns `null`
+ * when there's no clip-path to apply at all (no/invalid `clip-path`
+ * attribute, or a broken `url(#id)` reference — per spec, both mean "as if
+ * clip-path weren't specified," so the target draws normally, unclipped).
+ * Returns a `ResolvedClip` with an *empty* `paths` array when the reference
+ * is valid but nothing inside it could be resolved (e.g. every child was
+ * unsupported) — per spec an empty clip region clips away everything, the
+ * opposite of "no clip," so callers must not treat the two the same way
+ * (see `withClip` below).
  */
 export const resolveClipPathFor = (el: Element, ctx: WalkContext): ResolvedClip | null => {
     const clipPathAttr = readPresentation(el, 'clip-path');
@@ -63,21 +134,7 @@ export const resolveClipPathFor = (el: Element, ctx: WalkContext): ResolvedClip 
     }
 
     const paths: string[] = [];
-    for (const child of Array.from(clipEl.children)) {
-        if (!SHAPE_ELEMENTS.has(child.tagName.toLowerCase())) continue;
-        if (
-            child.hasAttribute('transform') &&
-            !isIdentityMatrix(parseTransformList(child.getAttribute('transform')))
-        ) {
-            ctx.warnings.push(
-                `<clipPath> child with its own transform is not supported and was skipped`,
-            );
-            continue;
-        }
-        const d = shapeToPathData(child, ctx.viewport);
-        if (d) paths.push(d);
-    }
-    if (paths.length === 0) return null;
+    collectClipPaths(Array.from(clipEl.children), ctx, paths, IDENTITY_MATRIX);
 
     const clipRule = readPresentation(clipEl, 'clip-rule') === 'evenodd' ? 'evenodd' : 'nonzero';
     return { paths, clipRule, bboxMatrix };
@@ -90,6 +147,8 @@ export const withClip = (el: Element, ctx: WalkContext, draw: () => void): void 
         draw();
         return;
     }
+    // An empty clip region (clipPath resolved, but nothing inside it usable) clips away everything — draw() must not run.
+    if (clip.paths.length === 0) return;
     ctx.instructions.push({ type: 'pushClip', ...clip });
     draw();
     ctx.instructions.push({ type: 'popClip' });

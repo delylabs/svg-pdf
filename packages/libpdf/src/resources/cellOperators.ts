@@ -66,6 +66,7 @@ const appendShapeOperators = (
             ops.setLineWidth(instruction.strokeWidth),
             ops.setLineCap(lineCapToNumber(instruction.lineCap)),
             ops.setLineJoin(lineJoinToNumber(instruction.lineJoin)),
+            ops.setMiterLimit(instruction.miterLimit),
             ops.setStrokingRGB(strokeColor.r / 255, strokeColor.g / 255, strokeColor.b / 255),
         );
     }

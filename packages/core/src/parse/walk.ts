@@ -92,6 +92,17 @@ export function walkNode(
 
     if (NON_RENDERED_CONTAINERS.has(tag)) return;
 
+    /*
+     * `display:none` drops the element and its whole subtree from rendering
+     * entirely, per spec even when reached indirectly through a `<use>`
+     * reference (unlike `visibility:hidden`, see `ShapePaint.visible` in
+     * types.ts, which still walks children since one of them might turn
+     * itself back on). Checked here, before anything else, since every
+     * render path (direct walk, `<use>`'s `<symbol>`/`<svg>`/plain-shape
+     * branches) funnels through this one function.
+     */
+    if (readPresentation(el, 'display', ctx.cssRules)?.trim() === 'none') return;
+
     if (UNSUPPORTED_ELEMENTS.has(tag)) {
         ctx.warnings.push(`<${tag}> is not supported yet and was skipped`);
         return;
@@ -127,19 +138,22 @@ export function walkNode(
         /*
          * A <symbol> only ever renders through a <use> (it's in
          * NON_RENDERED_CONTAINERS so walking it directly is a no-op) — its
-         * children have to be walked here instead. Per spec it also
-         * establishes a new viewport: if it has a viewBox, that viewBox
+         * children have to be walked here instead. A <use> referencing a
+         * plain nested <svg> gets the exact same treatment per spec: its own
+         * x/y are ignored (replaced by the <use>'s, already folded into
+         * useMatrix above), only its width/height/viewBox matter here. Per
+         * spec both also establish a new viewport: if there's a viewBox, it
          * scales to fit the resolved width/height, same idea as the root
          * <svg>'s own viewBox-to-page fit. width/height (and their `%`
          * basis) follow the spec fallback chain: the <use>'s own value,
-         * else the <symbol>'s own value, else 100% of the current viewport
-         * — never "unscaled," which was the previous (incorrect) behavior
-         * when <use> omitted them.
+         * else the referenced element's own value, else 100% of the current
+         * viewport — never "unscaled," which was the previous (incorrect)
+         * behavior when <use> omitted them.
          */
         const referencedTag = referenced.tagName.toLowerCase();
-        const isSymbol = referencedTag === 'symbol';
+        const establishesViewport = referencedTag === 'symbol' || referencedTag === 'svg';
 
-        if (isSymbol) {
+        if (establishesViewport) {
             const useWidth = num(
                 el.getAttribute('width'),
                 num(referenced.getAttribute('width'), ctx.viewport.width, ctx.viewport.width),
@@ -250,6 +264,7 @@ export function walkNode(
         const x = num(el.getAttribute('x'));
         const y = num(el.getAttribute('y'));
         const paint = resolvePaint(el, inherited, ctx);
+        if (!paint.visible) return;
         const parRaw = (el.getAttribute('preserveAspectRatio') ?? '').trim();
         if (parRaw.includes('slice')) {
             ctx.warnings.push(
@@ -392,6 +407,7 @@ export function walkNode(
          * here rather than left to resolve to the inherited/default fill.
          */
         const paint: ShapePaint = tag === 'line' ? { ...resolvedPaint, fill: null } : resolvedPaint;
+        if (!paint.visible) return;
         const needsBBox = [paint.fill, paint.stroke].some((p) => {
             if (p === null || typeof p !== 'object' || !('kind' in p)) return false;
             if (p.kind === 'gradient') {

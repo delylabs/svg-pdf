@@ -43,6 +43,7 @@ export const DEFAULT_PAINT: ShapePaint = {
     strokeWidth: 1,
     lineCap: 'butt',
     lineJoin: 'miter',
+    miterLimit: 4,
     fillRule: 'nonzero',
     dashArray: null,
     dashOffset: 0,
@@ -56,6 +57,7 @@ export const DEFAULT_PAINT: ShapePaint = {
     letterSpacing: 0,
     wordSpacing: 0,
     preserveWhitespace: false,
+    visible: true,
 };
 
 /*
@@ -240,7 +242,9 @@ export const resolvePaint = (el: Element, inherited: ShapePaint, ctx: PaintConte
     const strokeWidthRaw = readPresentation(el, 'stroke-width', ctx.cssRules);
     const lineCapRaw = readPresentation(el, 'stroke-linecap', ctx.cssRules);
     const lineJoinRaw = readPresentation(el, 'stroke-linejoin', ctx.cssRules);
+    const miterLimitRaw = readPresentation(el, 'stroke-miterlimit', ctx.cssRules);
     const fillRuleRaw = readPresentation(el, 'fill-rule', ctx.cssRules);
+    const visibilityRaw = readPresentation(el, 'visibility', ctx.cssRules);
     const dashArrayRaw = readPresentation(el, 'stroke-dasharray', ctx.cssRules);
     const dashOffsetRaw = readPresentation(el, 'stroke-dashoffset', ctx.cssRules);
     // `mix-blend-mode` is CSS-only, not an SVG presentation attribute — a bare `mix-blend-mode="multiply"` attribute is inert in browsers.
@@ -271,6 +275,10 @@ export const resolvePaint = (el: Element, inherited: ShapePaint, ctx: PaintConte
             : inherited.strokeWidth,
         lineCap: (lineCapRaw as LineCap) ?? inherited.lineCap,
         lineJoin: (lineJoinRaw as LineJoin) ?? inherited.lineJoin,
+        miterLimit:
+            miterLimitRaw !== null
+                ? (parseFloat(miterLimitRaw) ?? inherited.miterLimit)
+                : inherited.miterLimit,
         fillRule: (fillRuleRaw as FillRule) ?? inherited.fillRule,
         dashArray: dashArrayRaw !== null ? parseDashArray(dashArrayRaw) : inherited.dashArray,
         dashOffset: dashOffsetRaw !== null ? parseFloat(dashOffsetRaw) || 0 : inherited.dashOffset,
@@ -311,5 +319,11 @@ export const resolvePaint = (el: Element, inherited: ShapePaint, ctx: PaintConte
                     : whiteSpaceRaw !== null
                       ? false
                       : inherited.preserveWhitespace,
+        visible:
+            visibilityRaw === 'hidden' || visibilityRaw === 'collapse'
+                ? false
+                : visibilityRaw === 'visible'
+                  ? true
+                  : inherited.visible,
     };
 };

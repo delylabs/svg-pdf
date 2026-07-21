@@ -114,6 +114,8 @@ export interface ShapePaint {
     readonly strokeWidth: number;
     readonly lineCap: LineCap;
     readonly lineJoin: LineJoin;
+    // SVG's own default (4) differs from PDF's native default (10), so this is always resolved and applied explicitly rather than left to the PDF writer's own default.
+    readonly miterLimit: number;
     readonly fillRule: FillRule;
     readonly dashArray: readonly number[] | null;
     readonly dashOffset: number;
@@ -134,6 +136,18 @@ export interface ShapePaint {
      * skips its usual whitespace-collapsing.
      */
     readonly preserveWhitespace: boolean;
+    /*
+     * From `visibility` (`hidden`/`collapse` -> false, `visible` -> true,
+     * inherited otherwise) — unlike `display:none` (handled separately in
+     * `parse/walk.ts` by skipping the subtree outright, since it also blocks
+     * indirect rendering through `<use>`), an invisible element still has to
+     * be walked: a `visibility:hidden` ancestor's descendant can turn itself
+     * back on with its own `visibility:visible`, per spec. Each leaf
+     * draw-instruction push site checks this directly instead of it being
+     * threaded onto the instruction itself, since an invisible element never
+     * produces an instruction at all.
+     */
+    readonly visible: boolean;
 }
 
 export interface ShapeInstruction extends ShapePaint {

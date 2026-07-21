@@ -1,5 +1,5 @@
-import { type BBoxRect, computePathBBox } from './bbox';
-import { parseFloats } from './matrix';
+import { type BBoxRect, computePathBBox, normalizePathData } from './bbox';
+import { type Matrix2D, parseFloats } from './matrix';
 
 // --- Shape → path `d` conversion -----------------------------------------
 
@@ -22,7 +22,7 @@ export const num = (value: string | null, fallback = 0, basis?: number): number 
     return Number.isNaN(parsed) ? fallback : parsed;
 };
 
-// Bézier approximation constant for a quarter circle, same technique svg2pdf.js uses.
+// Bézier approximation constant for a quarter circle.
 const KAPPA = 0.5522847498;
 
 /*
@@ -152,6 +152,37 @@ export const shapeToPathData = (el: Element, viewport?: ShapeViewport): string |
         default:
             return null;
     }
+};
+
+/*
+ * Re-expresses a path's `d` string with every point run through `m` —
+ * needed where a transform has to be baked directly into path coordinates
+ * rather than applied as a separate PDF `cm` matrix (e.g. a `<clipPath>`
+ * child's own `transform`, since the clip region is built from raw path
+ * strings, not drawn through the normal transform-stack machinery). Goes
+ * through `normalizePathData` first, so arcs (already flattened to cubic
+ * curves there) transform correctly too — an affine map doesn't preserve an
+ * arc's circular/elliptical parameters in general, but it does preserve a
+ * cubic Bézier's control points.
+ */
+export const transformPathData = (d: string, m: Matrix2D): string => {
+    const apply = (x: number, y: number): [number, number] => [
+        x * m.a + y * m.c + m.e,
+        x * m.b + y * m.d + m.f,
+    ];
+    return normalizePathData(d)
+        .map((seg) => {
+            if (seg.cmd === 'Z') return 'Z';
+            if (seg.cmd === 'C') {
+                const [x1, y1] = apply(seg.x1, seg.y1);
+                const [x2, y2] = apply(seg.x2, seg.y2);
+                const [x, y] = apply(seg.x, seg.y);
+                return `C ${x1} ${y1} ${x2} ${y2} ${x} ${y}`;
+            }
+            const [x, y] = apply(seg.x, seg.y);
+            return `${seg.cmd} ${x} ${y}`;
+        })
+        .join(' ');
 };
 
 /*

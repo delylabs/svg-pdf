@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120">
+    <defs>
+        <circle id="dot" cx="0" cy="0" r="28"/>
+        <clipPath id="clip1">
+            <use href="#dot" x="40" y="60"/>
+            <rect x="96" y="36" width="48" height="48" transform="rotate(45 120 60)"/>
+            <use href="#dot" x="200" y="60"/>
+        </clipPath>
+    </defs>
+    <rect x="0" y="0" width="240" height="120" fill="#2980b9" clip-path="url(#clip1)"/>
+</svg>

@@ -203,6 +203,40 @@ describe('embedSvgInPdf', () => {
             const content = getPageContentText(doc, 0);
             expect(content).not.toMatch(/0 0 0 rg/); // no default black fill leaked in
         });
+
+        it("emits an explicit stroke-miterlimit operator, defaulting to 4 (SVG default) rather than the PDF writer's own default", async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 10 10"><rect width="10" height="10" stroke="#000" stroke-miterlimit="8"/></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            expect(content).toMatch(/\b8 M\b/);
+        });
+
+        it('draws nothing for display="none"', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 10 10"><rect display="none" width="10" height="10" fill="#ff0000"/></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            expect(content).not.toMatch(/1 0 0 rg/);
+        });
+
+        it('draws nothing for visibility="hidden" but still draws a visibility="visible" descendant', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 10 10"><g visibility="hidden"><rect width="5" height="5" fill="#ff0000"/><rect visibility="visible" width="10" height="10" fill="#00ff00"/></g></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            expect(content).not.toMatch(/1 0 0 rg/);
+            expect(content).toMatch(/0 1 0 rg/);
+        });
     });
 
     describe('transforms', () => {

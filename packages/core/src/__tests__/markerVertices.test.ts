@@ -41,14 +41,30 @@ describe('computeMarkerVertices', () => {
 
     it('closes a square: start uses only the outgoing edge, ignoring the Z closing tangent', () => {
         const vertices = computeMarkerVertices('M 0 0 L 10 0 L 10 10 L 0 10 Z');
-        expect(vertices).toHaveLength(4);
         expect(vertices[0]).toMatchObject({ x: 0, y: 0, type: 'start' });
         // Outgoing edge (0,0)->(10,0) points along +x, not the Z-closing edge's -y direction.
         expect(vertices[0].angle).toBeCloseTo(0);
     });
 
+    it('places a coincident marker-end at the closing point of a single closed subpath, bisecting the closing and first edges', () => {
+        const vertices = computeMarkerVertices('M 0 0 L 10 0 L 10 10 L 0 10 Z');
+        // 4 corners -> start + 3 mid (the corner right before Z is now mid, not end) + a separately-appended end at the shared start/end point.
+        expect(vertices.map((v) => v.type)).toEqual(['start', 'mid', 'mid', 'mid', 'end']);
+        const end = vertices[vertices.length - 1];
+        expect(end).toMatchObject({ x: 0, y: 0 });
+        // Closing edge (0,10)->(0,0) is (0,-1); first edge (0,0)->(10,0) is (1,0); bisector is -45°.
+        expect(end.angle).toBeCloseTo(-Math.PI / 4);
+    });
+
     it('treats every vertex between the first and last as marker-mid, including across multiple subpaths', () => {
         const vertices = computeMarkerVertices('M 0 0 L 10 0 Z M 20 20 L 30 20');
         expect(vertices.map((v) => v.type)).toEqual(['start', 'mid', 'mid', 'end']);
+    });
+
+    it("does not duplicate marker-end when a closed subpath isn't the very first vertex of the path", () => {
+        // The last subpath's own start (20,20) is a distinct vertex from the path's overall first vertex (0,0), so no coincidence/duplication applies.
+        const vertices = computeMarkerVertices('M 0 0 L 10 0 M 20 20 L 30 20 L 30 30 Z');
+        expect(vertices.map((v) => v.type)).toEqual(['start', 'mid', 'end', 'mid', 'mid']);
+        expect(vertices.filter((v) => v.type === 'end')).toHaveLength(1);
     });
 });

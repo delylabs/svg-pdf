@@ -38,8 +38,15 @@ const setDir = (
  * bookkeeping (an M with no following segment has no tangent at all; Z
  * updates its subpath's *first* vertex, not a new one) doesn't belong mixed
  * into the angle/type logic that only cares about the overall first/last.
+ *
+ * `endIndex` is the true "last vertex of the whole path" per spec — for a
+ * path ending in `Z`, that's the closing subpath's *start* vertex (where the
+ * closing edge lands), not the last vertex pushed onto the array. It falls
+ * out naturally: `currentIndex` already points there after `Z` is processed
+ * below, so no separate bookkeeping is needed for the common (open-path)
+ * case where it's simply the last pushed vertex.
  */
-const computePathVertices = (d: string): RawVertex[] => {
+const computePathVertices = (d: string): { vertices: RawVertex[]; endIndex: number } => {
     const segments = normalizePathData(d);
     const vertices: RawVertex[] = [];
     let current = { x: 0, y: 0 };
@@ -116,51 +123,59 @@ const computePathVertices = (d: string): RawVertex[] => {
         currentIndex = nextIndex;
     }
 
-    return vertices;
+    return { vertices, endIndex: currentIndex };
+};
+
+/*
+ * Outgoing-only for marker-start; bisector-of-incoming-and-outgoing (falling back to whichever exists) for marker-mid
+ * and marker-end alike — an 'end' vertex only has both directions when it's a closed subpath's start/end point, a plain
+ * open path's true last vertex has no outgoing direction, so this reduces to "incoming only" for it, same as before.
+ */
+const angleFor = (v: RawVertex, type: MarkerVertex['type']): number => {
+    if (type === 'start') return v.dirOut ? Math.atan2(v.dirOut[1], v.dirOut[0]) : 0;
+    if (v.dirIn && v.dirOut) {
+        const bx = v.dirIn[0] + v.dirOut[0];
+        const by = v.dirIn[1] + v.dirOut[1];
+        return Math.hypot(bx, by) > 1e-9
+            ? Math.atan2(by, bx)
+            : Math.atan2(v.dirOut[1], v.dirOut[0]);
+    }
+    const only = v.dirIn ?? v.dirOut;
+    return only ? Math.atan2(only[1], only[0]) : 0;
 };
 
 /*
  * Computes marker-start/-mid/-end placements for a path — vertex position
- * plus the tangent angle `orient="auto"` uses. Per spec: marker-start is
- * always the outgoing direction only (no incoming segment exists before the
- * very first point, even on a closed subpath); marker-end is always the
- * incoming direction only (the arriving segment); every other vertex is
- * marker-mid, oriented along the bisector of its incoming and outgoing
- * tangents (falling back to whichever one exists, or 0 if the vertex is
- * isolated).
+ * plus the tangent angle `orient="auto"` uses. Every other vertex is
+ * marker-mid; marker-start and marker-end go at the overall first/last
+ * vertex respectively — see `computePathVertices`'s `endIndex` for how
+ * "last" is found on a closed subpath.
  *
- * Scoping note: on a *closed* subpath (ends in `Z`), the spec treats the
- * closing edge's arrival as the true "last vertex" (coinciding with the
- * subpath's start point) for marker-end purposes. This implementation
- * instead places marker-end at the last *explicit* command's endpoint (the
- * vertex just before `Z`), using that segment's own incoming tangent — the
- * overwhelmingly common real-world case (arrowheads on open paths/lines/
- * curves) is unaffected; only closed-shape marker-end orientation differs
- * from a strict spec reading.
+ * A single-subpath path that closes with `Z` (the common case — a plain
+ * polygon/rect `d`) has its marker-end coincide *positionally* with
+ * marker-start (`endIndex === 0`): both belong at that shared point, just
+ * with different orientations (start uses only the outgoing edge, end
+ * bisects the closing edge with the first edge). Since each array slot can
+ * only carry one `type`, that slot is emitted as `'start'` by the main pass
+ * below, and a second `'end'` entry at the same position is appended afterwards.
  */
 export const computeMarkerVertices = (d: string): MarkerVertex[] => {
-    const vertices = computePathVertices(d);
+    const { vertices, endIndex } = computePathVertices(d);
     if (vertices.length === 0) return [];
 
-    return vertices.map((v, i): MarkerVertex => {
-        const type: MarkerVertex['type'] =
-            i === 0 ? 'start' : i === vertices.length - 1 ? 'end' : 'mid';
-        let angle: number;
-        if (type === 'start') {
-            angle = v.dirOut ? Math.atan2(v.dirOut[1], v.dirOut[0]) : 0;
-        } else if (type === 'end') {
-            angle = v.dirIn ? Math.atan2(v.dirIn[1], v.dirIn[0]) : 0;
-        } else if (v.dirIn && v.dirOut) {
-            const bx = v.dirIn[0] + v.dirOut[0];
-            const by = v.dirIn[1] + v.dirOut[1];
-            angle =
-                Math.hypot(bx, by) > 1e-9
-                    ? Math.atan2(by, bx)
-                    : Math.atan2(v.dirOut[1], v.dirOut[0]);
-        } else {
-            const only = v.dirIn ?? v.dirOut;
-            angle = only ? Math.atan2(only[1], only[0]) : 0;
-        }
-        return { x: v.x, y: v.y, angle, type };
+    const result = vertices.map((v, i): MarkerVertex => {
+        const type: MarkerVertex['type'] = i === 0 ? 'start' : i === endIndex ? 'end' : 'mid';
+        return { x: v.x, y: v.y, angle: angleFor(v, type), type };
     });
+
+    if (endIndex === 0 && vertices[0].dirIn) {
+        result.push({
+            x: vertices[0].x,
+            y: vertices[0].y,
+            angle: angleFor(vertices[0], 'end'),
+            type: 'end',
+        });
+    }
+
+    return result;
 };
