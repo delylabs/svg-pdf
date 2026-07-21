@@ -119,8 +119,8 @@ export function walkNode(
             ctx.warnings.push(`<use href="#${refId}"> target not found and was skipped`);
             return;
         }
-        const x = num(el.getAttribute('x'));
-        const y = num(el.getAttribute('y'));
+        const x = num(el.getAttribute('x'), 0, ctx.viewport.width);
+        const y = num(el.getAttribute('y'), 0, ctx.viewport.height);
         const paint = resolvePaint(el, inherited, ctx);
         const useMatrix = multiplyMatrix(translateMatrix(x, y), transform);
 
@@ -128,20 +128,37 @@ export function walkNode(
          * A <symbol> only ever renders through a <use> (it's in
          * NON_RENDERED_CONTAINERS so walking it directly is a no-op) — its
          * children have to be walked here instead. Per spec it also
-         * establishes a new viewport: if it has a viewBox and the <use>
-         * specifies width/height, that viewBox scales to fit, same idea as
-         * the root <svg>'s own viewBox-to-page fit.
+         * establishes a new viewport: if it has a viewBox, that viewBox
+         * scales to fit the resolved width/height, same idea as the root
+         * <svg>'s own viewBox-to-page fit. width/height (and their `%`
+         * basis) follow the spec fallback chain: the <use>'s own value,
+         * else the <symbol>'s own value, else 100% of the current viewport
+         * — never "unscaled," which was the previous (incorrect) behavior
+         * when <use> omitted them.
          */
         const referencedTag = referenced.tagName.toLowerCase();
         const isSymbol = referencedTag === 'symbol';
-        let symbolMatrix = IDENTITY_MATRIX;
+
         if (isSymbol) {
+            const useWidth = num(
+                el.getAttribute('width'),
+                num(referenced.getAttribute('width'), ctx.viewport.width, ctx.viewport.width),
+                ctx.viewport.width,
+            );
+            const useHeight = num(
+                el.getAttribute('height'),
+                num(referenced.getAttribute('height'), ctx.viewport.height, ctx.viewport.height),
+                ctx.viewport.height,
+            );
+            if (useWidth <= 0 || useHeight <= 0) return;
+
             const viewBoxNumbers = referenced.hasAttribute('viewBox')
                 ? parseFloats(referenced.getAttribute('viewBox') ?? '')
                 : null;
-            const useWidth = el.hasAttribute('width') ? num(el.getAttribute('width')) : null;
-            const useHeight = el.hasAttribute('height') ? num(el.getAttribute('height')) : null;
-            if (viewBoxNumbers?.length === 4 && useWidth && useHeight) {
+            let symbolMatrix = IDENTITY_MATRIX;
+            let childViewportWidth = useWidth;
+            let childViewportHeight = useHeight;
+            if (viewBoxNumbers?.length === 4) {
                 const [vbX, vbY, vbWidth, vbHeight] = viewBoxNumbers;
                 symbolMatrix = computeViewBoxTransform(
                     vbX,
@@ -152,24 +169,50 @@ export function walkNode(
                     useHeight,
                     referenced.getAttribute('preserveAspectRatio'),
                 );
+                childViewportWidth = vbWidth;
+                childViewportHeight = vbHeight;
             }
-        }
-        const finalMatrix = multiplyMatrix(symbolMatrix, useMatrix);
+            const overflowVisible = readPresentation(referenced, 'overflow')?.trim() === 'visible';
 
-        withPush(finalMatrix, ctx, () => {
+            withPush(useMatrix, ctx, () => {
+                withClip(el, ctx, () => {
+                    const clipViewport = !overflowVisible;
+                    if (clipViewport) {
+                        ctx.instructions.push({
+                            type: 'pushClip',
+                            paths: [`M 0 0 H ${useWidth} V ${useHeight} H 0 Z`],
+                            clipRule: 'nonzero',
+                            bboxMatrix: null,
+                        });
+                    }
+                    withPush(symbolMatrix, ctx, () => {
+                        const nextCtx: WalkContext = {
+                            ...ctx,
+                            visitedUseIds: new Set(ctx.visitedUseIds).add(refId),
+                            viewport: { width: childViewportWidth, height: childViewportHeight },
+                        };
+                        const nextAccMatrix = multiplyMatrix(
+                            symbolMatrix,
+                            multiplyMatrix(useMatrix, accMatrix),
+                        );
+                        for (const child of Array.from(referenced.children)) {
+                            walkNode(child, paint, nextCtx, nextAccMatrix);
+                        }
+                    });
+                    if (clipViewport) ctx.instructions.push({ type: 'popClip' });
+                });
+            });
+            return;
+        }
+
+        withPush(useMatrix, ctx, () => {
             withClip(el, ctx, () => {
                 const nextCtx: WalkContext = {
                     ...ctx,
                     visitedUseIds: new Set(ctx.visitedUseIds).add(refId),
                 };
-                const nextAccMatrix = multiplyMatrix(finalMatrix, accMatrix);
-                if (isSymbol) {
-                    for (const child of Array.from(referenced.children)) {
-                        walkNode(child, paint, nextCtx, nextAccMatrix);
-                    }
-                } else {
-                    walkNode(referenced, paint, nextCtx, nextAccMatrix);
-                }
+                const nextAccMatrix = multiplyMatrix(useMatrix, accMatrix);
+                walkNode(referenced, paint, nextCtx, nextAccMatrix);
             });
         });
         return;
@@ -241,25 +284,18 @@ export function walkNode(
      * explicit x/y offset and a viewport clip instead of relying on the
      * referencing element's own clip-path.
      *
-     * Scope limit: width/height must be explicit numbers here. Per spec they
-     * default to 100% of the *parent* viewport when absent, but svg-pdf
-     * doesn't track a live "current viewport size" for percentage resolution
-     * anywhere else in the codebase (the root <svg>'s own width/height
-     * fallback in `resolveSvgSize` is a one-time computation, not something
-     * threaded through the walk) — so an absent width/height is skipped with
-     * a warning rather than guessed at.
+     * width/height/x/y may be percentages, resolved against the *parent*
+     * viewport (`ctx.viewport`, still the outer one at this point); per spec
+     * width/height default to 100% of the parent when absent. A resulting
+     * zero-or-negative size silently disables rendering (same convention as
+     * <image>'s zero-size handling above), not a warning-worthy state.
      */
     if (tag === 'svg') {
-        const width = el.hasAttribute('width') ? num(el.getAttribute('width')) : null;
-        const height = el.hasAttribute('height') ? num(el.getAttribute('height')) : null;
-        if (width === null || height === null || width <= 0 || height <= 0) {
-            ctx.warnings.push(
-                'nested <svg> without explicit numeric width/height (percentage sizing is not supported) was skipped',
-            );
-            return;
-        }
-        const x = num(el.getAttribute('x'));
-        const y = num(el.getAttribute('y'));
+        const width = num(el.getAttribute('width'), ctx.viewport.width, ctx.viewport.width);
+        const height = num(el.getAttribute('height'), ctx.viewport.height, ctx.viewport.height);
+        if (width <= 0 || height <= 0) return;
+        const x = num(el.getAttribute('x'), 0, ctx.viewport.width);
+        const y = num(el.getAttribute('y'), 0, ctx.viewport.height);
         const paint = resolvePaint(el, inherited, ctx);
         const offsetMatrix = multiplyMatrix(translateMatrix(x, y), transform);
 
@@ -267,6 +303,8 @@ export function walkNode(
             ? parseFloats(el.getAttribute('viewBox') ?? '')
             : null;
         let viewBoxMatrix = IDENTITY_MATRIX;
+        let childViewportWidth = width;
+        let childViewportHeight = height;
         if (viewBoxNumbers?.length === 4) {
             const [vbX, vbY, vbWidth, vbHeight] = viewBoxNumbers;
             viewBoxMatrix = computeViewBoxTransform(
@@ -278,6 +316,15 @@ export function walkNode(
                 height,
                 el.getAttribute('preserveAspectRatio'),
             );
+            /*
+             * Children's own `%` geometry resolves against the coordinate
+             * system they actually live in (the viewBox's user units), not
+             * the pre-scale width/height — same convention as the root
+             * <svg>'s `viewport: { width: size.viewBoxWidth, ... }` in
+             * `document.ts`.
+             */
+            childViewportWidth = vbWidth;
+            childViewportHeight = vbHeight;
         }
         const overflowVisible = readPresentation(el, 'overflow')?.trim() === 'visible';
 
@@ -296,8 +343,12 @@ export function walkNode(
                     viewBoxMatrix,
                     multiplyMatrix(offsetMatrix, accMatrix),
                 );
+                const nextCtx: WalkContext = {
+                    ...ctx,
+                    viewport: { width: childViewportWidth, height: childViewportHeight },
+                };
                 for (const child of Array.from(el.children)) {
-                    walkNode(child, paint, ctx, nextAccMatrix);
+                    walkNode(child, paint, nextCtx, nextAccMatrix);
                 }
             });
             if (clipViewport) ctx.instructions.push({ type: 'popClip' });

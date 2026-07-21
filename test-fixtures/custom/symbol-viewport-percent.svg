@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200" width="400" height="200">
+  <rect width="100%" height="100%" fill="white"/>
+  <defs>
+    <symbol id="tile" viewBox="0 0 10 10">
+      <rect x="-3" y="-3" width="3" height="3" fill="black"/>
+      <rect width="10" height="10" fill="none" stroke="teal" stroke-width="0.3"/>
+      <rect x="1" y="1" width="3" height="3" fill="crimson"/>
+      <rect x="6" y="6" width="3" height="3" fill="darkorange"/>
+      <circle cx="5" cy="5" r="1" fill="purple"/>
+    </symbol>
+  </defs>
+  <use href="#tile" x="5%" y="5%" width="45%" height="90%"/>
+  <use href="#tile" x="55%" y="5%" width="40%" height="90%"/>
+</svg>

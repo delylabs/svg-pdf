@@ -7,10 +7,13 @@ export interface WalkContext extends PaintContext {
     readonly visitedUseIds: ReadonlySet<string>;
     readonly markers: Map<string, MarkerDef>;
     /*
-     * The root <svg>'s viewBox size — the percentage basis for a shape's own
-     * `%`-valued geometry (`x="50%"`, etc). A nested `<svg>`/`<symbol>`
-     * establishing its own smaller viewport isn't tracked, so this stays the
-     * root's size throughout the whole walk, not the locally nested one.
+     * The current viewport's size (its viewBox, if it has one, else its raw
+     * width/height) — the percentage basis for a shape's own `%`-valued
+     * geometry (`x="50%"`, etc). Starts as the root <svg>'s size and is
+     * swapped for a narrower `WalkContext` (see `walk.ts`'s `tag === 'svg'`
+     * branch) while walking a nested `<svg>`'s children, so percentages
+     * resolve against whichever viewport their element actually lives in.
+     * `<symbol>` (reached via `<use>`) does not yet get the same treatment.
      */
     readonly viewport: ShapeViewport;
     /*

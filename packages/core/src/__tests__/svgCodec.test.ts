@@ -250,6 +250,80 @@ describe('parseSvgDocument', () => {
         expect(push.matrix.d).toBe(2);
     });
 
+    it("clips a <symbol>'s content to its resolved width/height by default", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><symbol id="box"><rect width="50" height="50" fill="#000"/></symbol></defs><use href="#box" x="0" y="0" width="20" height="10"/></svg>',
+        );
+        const pushClip = doc.instructions.find((i) => i.type === 'pushClip');
+        if (!pushClip || pushClip.type !== 'pushClip') throw new Error('unreachable');
+        expect(pushClip.paths).toEqual(['M 0 0 H 20 V 10 H 0 Z']);
+    });
+
+    it('skips the viewport clip for a <symbol> with overflow="visible"', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><symbol id="box" overflow="visible"><rect width="50" height="50" fill="#000"/></symbol></defs><use href="#box" x="0" y="0" width="20" height="10"/></svg>',
+        );
+        expect(doc.instructions.some((i) => i.type === 'pushClip')).toBe(false);
+    });
+
+    it("resolves <use>'s percentage x/y against the current viewport", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 200 100"><defs><symbol id="box"><rect width="10" height="10" fill="#000"/></symbol></defs><use href="#box" x="10%" y="10%"/></svg>',
+        );
+        // No viewBox on the symbol, so the only pushMatrix is the plain x/y offset.
+        const push = doc.instructions.find((i) => i.type === 'pushMatrix');
+        if (!push || push.type !== 'pushMatrix') throw new Error('unreachable');
+        expect(push.matrix).toEqual({ a: 1, b: 0, c: 0, d: 1, e: 20, f: 10 });
+    });
+
+    it("resolves <use>'s percentage width/height against the current viewport when scaling a <symbol>'s viewBox", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 200 100"><defs><symbol id="box" viewBox="0 0 10 10"><rect width="10" height="10" fill="#000"/></symbol></defs><use href="#box" x="0" y="0" width="50%" height="50%"/></svg>',
+        );
+        const push = doc.instructions.find(
+            (i) => i.type === 'pushMatrix' && i.matrix.a === i.matrix.d,
+        );
+        if (!push || push.type !== 'pushMatrix') throw new Error('unreachable');
+        // 50%/50% of a 200x100 viewport is 100x50; 10x10 viewBox: width ratio 10, height ratio 5 — meet picks the smaller (5), centering horizontally.
+        expect(push.matrix.a).toBe(5);
+        expect(push.matrix.d).toBe(5);
+        expect(push.matrix.e).toBe(25); // (100 - 10*5) / 2
+        expect(push.matrix.f).toBe(0);
+    });
+
+    it("falls back to the <symbol>'s own width/height when <use> omits them, instead of drawing unscaled", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><symbol id="box" viewBox="0 0 10 10" width="20" height="20"><rect width="10" height="10" fill="#000"/></symbol></defs><use href="#box"/></svg>',
+        );
+        const scalePush = doc.instructions.find(
+            (i) => i.type === 'pushMatrix' && i.matrix.a === i.matrix.d && i.matrix.a !== 1,
+        );
+        if (!scalePush || scalePush.type !== 'pushMatrix') throw new Error('unreachable');
+        expect(scalePush.matrix.a).toBe(2);
+        expect(scalePush.matrix.d).toBe(2);
+    });
+
+    it('falls back to 100% of the current viewport when neither <use> nor <symbol> specify width/height', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 40 20"><defs><symbol id="box" viewBox="0 0 10 10"><rect width="10" height="10" fill="#000"/></symbol></defs><use href="#box"/></svg>',
+        );
+        const scalePush = doc.instructions.find(
+            (i) => i.type === 'pushMatrix' && i.matrix.a === i.matrix.d && i.matrix.a !== 1,
+        );
+        if (!scalePush || scalePush.type !== 'pushMatrix') throw new Error('unreachable');
+        // 40x20 viewport, 10x10 viewBox: width ratio 4, height ratio 2 — meet picks the smaller (2).
+        expect(scalePush.matrix.a).toBe(2);
+        expect(scalePush.matrix.d).toBe(2);
+    });
+
+    it("resolves a shape's own percentage geometry inside a <symbol> against that symbol's viewBox, not the root's", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 400 400"><defs><symbol id="box" viewBox="0 0 10 10"><rect width="50%" height="50%" fill="#00ff00"/></symbol></defs><use href="#box" width="40" height="40"/></svg>',
+        );
+        const shape = shapesOf(doc).find((s) => s.fill && 'r' in s.fill && s.fill.g === 255);
+        expect(shape?.d).toBe('M 0 0 H 5 V 5 H 0 Z');
+    });
+
     it('resolves a simple non-recursive <use> reference', () => {
         const doc = parseSvgDocument(
             '<svg viewBox="0 0 100 100"><defs><rect id="box" width="5" height="5" fill="#0000ff"/></defs><use href="#box" x="10" y="20"/></svg>',
@@ -585,12 +659,42 @@ describe('parseSvgDocument (nested svg)', () => {
         expect(doc.instructions.some((i) => i.type === 'pushClip')).toBe(false);
     });
 
-    it('warns and skips a nested <svg> without explicit numeric width/height', () => {
+    it('defaults a nested <svg> without explicit width/height to 100% of the parent viewport', () => {
         const doc = parseSvgDocument(
             '<svg viewBox="0 0 100 100"><svg><rect width="10" height="10"/></svg></svg>',
         );
-        expect(doc.instructions.some((i) => i.type === 'shape')).toBe(false);
-        expect(doc.warnings.some((w) => w.includes('nested <svg>'))).toBe(true);
+        expect(doc.instructions.some((i) => i.type === 'shape')).toBe(true);
+        const pushClip = doc.instructions.find((i) => i.type === 'pushClip');
+        if (!pushClip || pushClip.type !== 'pushClip') throw new Error('unreachable');
+        expect(pushClip.paths).toEqual(['M 0 0 H 100 V 100 H 0 Z']);
+    });
+
+    it("resolves a nested <svg>'s percentage width/height/x/y against the parent viewport", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 200 100"><svg x="10%" y="20%" width="50%" height="50%"><rect width="10" height="10"/></svg></svg>',
+        );
+        const offsetPush = doc.instructions[0];
+        if (offsetPush.type !== 'pushMatrix') throw new Error('unreachable');
+        expect(offsetPush.matrix).toEqual({ a: 1, b: 0, c: 0, d: 1, e: 20, f: 20 });
+        const pushClip = doc.instructions.find((i) => i.type === 'pushClip');
+        if (!pushClip || pushClip.type !== 'pushClip') throw new Error('unreachable');
+        expect(pushClip.paths).toEqual(['M 0 0 H 100 V 50 H 0 Z']);
+    });
+
+    it("resolves a shape's own percentage geometry inside a nested <svg> against that nested viewport, not the root's", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 400 400"><svg width="40" height="40"><rect width="50%" height="50%" fill="#00ff00"/></svg></svg>',
+        );
+        const shape = shapesOf(doc).find((s) => s.fill && 'r' in s.fill && s.fill.g === 255);
+        expect(shape?.d).toBe('M 0 0 H 20 V 20 H 0 Z');
+    });
+
+    it("resolves a shape's percentage geometry against a nested <svg>'s own viewBox, not its pre-scale width/height", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 400 400"><svg width="40" height="40" viewBox="0 0 10 10"><rect width="50%" height="50%" fill="#00ff00"/></svg></svg>',
+        );
+        const shape = shapesOf(doc).find((s) => s.fill && 'r' in s.fill && s.fill.g === 255);
+        expect(shape?.d).toBe('M 0 0 H 5 V 5 H 0 Z');
     });
 
     it('lets a <use> reference a shape inside a nested <svg>', () => {

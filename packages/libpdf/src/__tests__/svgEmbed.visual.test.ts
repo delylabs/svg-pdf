@@ -47,7 +47,9 @@ describe('SVG-vs-PDF visual regression (custom fixtures)', () => {
 
         const result = diffImages(svgRaster, pdfRaster);
 
-        mismatchSummary.push(`${fixtureName}: ${(result.mismatchRatio * 100).toFixed(2)}% mismatch`);
+        mismatchSummary.push(
+            `${fixtureName}: ${(result.mismatchRatio * 100).toFixed(2)}% mismatch`,
+        );
 
         if (result.mismatchRatio > MAX_MISMATCH_RATIO) {
             fs.mkdirSync(DEBUG_OUT_DIR, { recursive: true });

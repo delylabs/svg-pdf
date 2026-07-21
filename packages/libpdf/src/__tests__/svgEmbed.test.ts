@@ -272,16 +272,16 @@ describe('embedSvgInPdf', () => {
             expect(content).toMatch(/\bW\b\s*\n?\s*n\b/);
         });
 
-        it('draws nothing but a warning for a nested <svg> without explicit width/height', async () => {
+        it('defaults a nested <svg> without explicit width/height to 100% of the parent viewport', async () => {
             const doc = LibPDF.create();
             const result = await embedSvgInPdf(doc, {
                 svgText:
                     '<svg viewBox="0 0 100 100"><svg><rect width="10" height="10" fill="#ff0000"/></svg></svg>',
                 rotation: 0,
             });
-            expect(result.warnings.some((w) => w.includes('nested <svg>'))).toBe(true);
+            expect(result.warnings).toEqual([]);
             const content = getPageContentText(doc, 0);
-            expect(content).not.toMatch(/rg/);
+            expect(content).toMatch(/1 0 0 rg/);
         });
     });
 
