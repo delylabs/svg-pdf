@@ -74,10 +74,14 @@ function resolveTextFillAndWarn(
  * <textPath href="#id"> draws its text along the referenced <path>'s
  * geometry instead of at a fixed x/y — see `TextPathInstruction`'s doc
  * comment in types.ts for why this needs its own instruction type and what
- * it deliberately doesn't support (textLength/lengthAdjust, nested tspans).
+ * it deliberately doesn't support (nested tspans; lengthAdjust="spacingAndGlyphs").
  * `startOffset` accepts a plain number (in the referenced path's own
  * length units, rescaled by its `pathLength` attribute if set) or a `%` of
- * the path's total length.
+ * the path's total length. `textLength` (a plain number or `%` of the
+ * path's total length) is resolved here and handed to the adapter as an
+ * absolute distance, same units as `startDistance`/`cumLengths` — the
+ * per-character spacing adjustment to actually hit that length happens at
+ * draw time (see `drawTextPath.ts`), since it needs `measureText`.
  */
 function walkTextPathElement(el: Element, inherited: ShapePaint, ctx: WalkContext): void {
     const paint = resolvePaint(el, inherited, ctx);
@@ -114,10 +118,16 @@ function walkTextPathElement(el: Element, inherited: ShapePaint, ctx: WalkContex
             '<textPath> with nested <tspan> children is not supported — only its own direct text content was used',
         );
     }
-    if (el.hasAttribute('textLength')) {
-        ctx.warnings.push(
-            '<textPath textLength="..."> (stretching/compressing text to fit an exact length) is not supported and was ignored',
-        );
+    const textLength = el.hasAttribute('textLength')
+        ? num(el.getAttribute('textLength'), 0, totalLength)
+        : null;
+    if (textLength !== null && textLength > 0) {
+        const lengthAdjust = (el.getAttribute('lengthAdjust') ?? 'spacing').trim();
+        if (lengthAdjust === 'spacingAndGlyphs') {
+            ctx.warnings.push(
+                '<textPath lengthAdjust="spacingAndGlyphs"> is not supported — only inter-character spacing was stretched/compressed to fit textLength, glyphs themselves were not resized',
+            );
+        }
     }
 
     const ownText = applyTextTransform(
@@ -142,6 +152,7 @@ function walkTextPathElement(el: Element, inherited: ShapePaint, ctx: WalkContex
             textAnchor: paint.textAnchor,
             letterSpacing: paint.letterSpacing,
             wordSpacing: paint.wordSpacing,
+            textLength: textLength !== null && textLength > 0 ? textLength : null,
         });
     }
 }

@@ -1100,12 +1100,29 @@ describe('parseSvgDocument (textPath)', () => {
         expect(doc.warnings.some((w) => w.includes('nested <tspan>'))).toBe(true);
     });
 
-    it('warns (but still draws) when a <textPath> has a textLength attribute', () => {
+    it('resolves a plain-number textLength with no warning (default lengthAdjust="spacing")', () => {
         const doc = parseSvgDocument(
             '<svg viewBox="0 0 100 100"><path id="p" d="M0 0 L100 0"/><text><textPath href="#p" textLength="50">Curved</textPath></text></svg>',
         );
+        const tp = textPathsOf(doc)[0] as unknown as { textLength: number | null };
+        expect(tp.textLength).toBe(50);
+        expect(doc.warnings.some((w) => w.includes('textLength'))).toBe(false);
+    });
+
+    it("resolves a percentage textLength against the referenced path's total length", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><path id="p" d="M0 0 L100 0"/><text><textPath href="#p" textLength="50%">Curved</textPath></text></svg>',
+        );
+        const tp = textPathsOf(doc)[0] as unknown as { textLength: number | null };
+        expect(tp.textLength).toBeCloseTo(50);
+    });
+
+    it('warns when lengthAdjust="spacingAndGlyphs" is requested alongside textLength', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><path id="p" d="M0 0 L100 0"/><text><textPath href="#p" textLength="50" lengthAdjust="spacingAndGlyphs">Curved</textPath></text></svg>',
+        );
         expect(textPathsOf(doc)).toHaveLength(1);
-        expect(doc.warnings.some((w) => w.includes('textLength'))).toBe(true);
+        expect(doc.warnings.some((w) => w.includes('spacingAndGlyphs'))).toBe(true);
     });
 
     it('inherits fill/font-size from the ancestor <text>', () => {

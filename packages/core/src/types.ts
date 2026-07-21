@@ -244,9 +244,12 @@ export interface TextInstruction {
  * everything the adapter needs (already-flattened path geometry, already-
  * resolved start distance) to do that character-by-character walk itself
  * (see `@svg-pdf/libpdf`'s `draw/drawTextPath.ts`).
- * `textLength`/`lengthAdjust` (glyph-spacing to fit an exact length) and
- * nested `<tspan>` children inside a `<textPath>` are out of scope — only
- * the `<textPath>` element's own direct text content is used.
+ * `textLength` is supported in its default `lengthAdjust="spacing"` mode
+ * (inter-character spacing is stretched/compressed to hit an exact total
+ * length; glyphs themselves stay their natural width) — see `textLength`
+ * below. `lengthAdjust="spacingAndGlyphs"` (which would also resize the
+ * glyphs) and nested `<tspan>` children inside a `<textPath>` are out of
+ * scope — only the `<textPath>` element's own direct text content is used.
  */
 export interface TextPathInstruction {
     readonly type: 'textPath';
@@ -266,6 +269,8 @@ export interface TextPathInstruction {
     readonly textAnchor: TextAnchor;
     readonly letterSpacing: number;
     readonly wordSpacing: number;
+    // Resolved `textLength` (plain number or % of the path's total length), or null if absent/invalid — see the doc comment above.
+    readonly textLength: number | null;
 }
 
 /*

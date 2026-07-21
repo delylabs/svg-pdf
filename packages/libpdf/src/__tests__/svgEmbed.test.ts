@@ -929,6 +929,53 @@ describe('embedSvgInPdf', () => {
             expect(Number(match![1])).toBeCloseTo(500, 5);
         });
 
+        it('stretches inter-character spacing to fit an explicit textLength', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 1000 100"><path id="p" d="M0 5 L1000 5"/><text><textPath href="#p" textLength="200">AB</textPath></text></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            const matches = [...content.matchAll(/1 0 0 1 (-?[\d.]+) -5 Tm/g)];
+            expect(matches).toHaveLength(2);
+            // Natural advance (no textLength) would place 'B' at width(A); textLength="200" stretches that gap so B lands further out.
+            const widthA = measureText('A', 'Helvetica', 16);
+            expect(Number(matches[0][1])).toBeCloseTo(0, 5);
+            expect(Number(matches[1][1])).toBeGreaterThan(widthA);
+        });
+
+        it('compresses inter-character spacing when textLength is shorter than the natural advance', async () => {
+            const doc = LibPDF.create();
+            await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 1000 100"><path id="p" d="M0 5 L1000 5"/><text><textPath href="#p" textLength="5">AB</textPath></text></svg>',
+                rotation: 0,
+            });
+            const content = getPageContentText(doc, 0);
+            const matches = [...content.matchAll(/1 0 0 1 (-?[\d.]+) -5 Tm/g)];
+            expect(matches).toHaveLength(2);
+            const widthA = measureText('A', 'Helvetica', 16);
+            const widthB = measureText('B', 'Helvetica', 16);
+            const naturalAdvance = widthA + widthB;
+            const extraPerChar = (5 - naturalAdvance) / 2;
+            expect(Number(matches[1][1])).toBeCloseTo(widthA + extraPerChar, 5);
+            expect(Number(matches[1][1])).toBeLessThan(widthA);
+        });
+
+        it('warns but still stretches spacing when lengthAdjust="spacingAndGlyphs" is requested', async () => {
+            const doc = LibPDF.create();
+            const result = await embedSvgInPdf(doc, {
+                svgText:
+                    '<svg viewBox="0 0 1000 100"><path id="p" d="M0 5 L1000 5"/><text><textPath href="#p" textLength="200" lengthAdjust="spacingAndGlyphs">AB</textPath></text></svg>',
+                rotation: 0,
+            });
+            expect(result.warnings.some((w) => w.includes('spacingAndGlyphs'))).toBe(true);
+            const content = getPageContentText(doc, 0);
+            const tjCount = (content.match(/Tj/g) ?? []).length;
+            expect(tjCount).toBe(2);
+        });
+
         it('stops drawing characters that would fall past the end of the path', async () => {
             const doc = LibPDF.create();
             await embedSvgInPdf(doc, {

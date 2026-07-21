@@ -12,14 +12,26 @@ import { concat, type DrawContext, FLIP_Y } from './drawContext';
  * how far `dist` advances between characters instead. No fetchFont/
  * @font-face lookup here (kept to `instruction.font`'s standard-14 fallback
  * only) — a deliberate scope trim, not a technical limitation.
+ *
+ * `textLength`, when set, is honored by distributing the difference between
+ * the text's natural advance and the requested length evenly across every
+ * character's step (`extraPerChar`) — this is `lengthAdjust="spacing"`,
+ * the SVG default; glyphs themselves are never resized (that would be
+ * `lengthAdjust="spacingAndGlyphs"`, which core already warns is
+ * unsupported when it's requested).
  */
 export const drawTextPath = (instruction: TextPathInstruction, ctx: DrawContext): void => {
     const chars = Array.from(instruction.text);
     const charWidths = chars.map((ch) => measureText(ch, instruction.font, instruction.fontSize));
-    const totalAdvance =
+    const naturalAdvance =
         charWidths.reduce((sum, w) => sum + w, 0) +
         instruction.letterSpacing * chars.length +
         instruction.wordSpacing * chars.filter((ch) => ch === ' ').length;
+    const extraPerChar =
+        instruction.textLength !== null && chars.length > 0
+            ? (instruction.textLength - naturalAdvance) / chars.length
+            : 0;
+    const totalAdvance = naturalAdvance + extraPerChar * chars.length;
     const anchorShift =
         instruction.textAnchor === 'middle'
             ? -totalAdvance / 2
@@ -51,6 +63,10 @@ export const drawTextPath = (instruction: TextPathInstruction, ctx: DrawContext)
             });
             ctx.page.drawOperators([ops.popGraphicsState()]);
         }
-        dist += charWidth + instruction.letterSpacing + (ch === ' ' ? instruction.wordSpacing : 0);
+        dist +=
+            charWidth +
+            instruction.letterSpacing +
+            (ch === ' ' ? instruction.wordSpacing : 0) +
+            extraPerChar;
     }
 };
