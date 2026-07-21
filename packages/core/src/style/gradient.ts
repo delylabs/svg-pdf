@@ -1,7 +1,7 @@
 import { IDENTITY_MATRIX, type Matrix2D, parseTransformList } from '../geometry/matrix';
 import { CSS_NAMED_COLORS, parseSvgColor, type RgbColor } from './color';
 import { MAX_USE_DEPTH, resolveHref } from './refs';
-import { readPresentation } from './stylesheet';
+import { type CssRule, readPresentation } from './stylesheet';
 
 export type GradientUnits = 'objectBoundingBox' | 'userSpaceOnUse';
 
@@ -44,7 +44,10 @@ const parseGradientCoord = (raw: string | null, fallback: number): number => {
     return trimmed.endsWith('%') ? parsed / 100 : parsed;
 };
 
-const readGradientStops = (el: Element): GradientStop[] => {
+const readGradientStops = (
+    el: Element,
+    cssRules: readonly CssRule[] | undefined,
+): GradientStop[] => {
     const stops: GradientStop[] = [];
     for (const child of Array.from(el.children)) {
         if (child.tagName.toLowerCase() !== 'stop') continue;
@@ -53,8 +56,9 @@ const readGradientStops = (el: Element): GradientStop[] => {
             Math.max(0, parseGradientCoord(child.getAttribute('offset'), 0)),
         );
         const color =
-            parseSvgColor(readPresentation(child, 'stop-color')) ?? CSS_NAMED_COLORS.black;
-        const opacityRaw = readPresentation(child, 'stop-opacity');
+            parseSvgColor(readPresentation(child, 'stop-color', cssRules)) ??
+            CSS_NAMED_COLORS.black;
+        const opacityRaw = readPresentation(child, 'stop-opacity', cssRules);
         const opacity =
             opacityRaw === null ? 1 : Math.min(1, Math.max(0, parseFloat(opacityRaw) || 0));
         stops.push({ offset, color, opacity });
@@ -71,6 +75,7 @@ const readGradientStops = (el: Element): GradientStop[] => {
 export const resolveGradientDef = (
     el: Element,
     idMap: ReadonlyMap<string, Element>,
+    cssRules?: readonly CssRule[],
     visited: ReadonlySet<string> = new Set(),
 ): GradientDef | null => {
     const tag = el.tagName.toLowerCase();
@@ -82,7 +87,12 @@ export const resolveGradientDef = (
     if (hrefId && !visited.has(hrefId) && visited.size < MAX_USE_DEPTH) {
         const baseEl = idMap.get(hrefId);
         if (baseEl) {
-            base = resolveGradientDef(baseEl, idMap, new Set(visited).add(id ?? hrefId));
+            base = resolveGradientDef(
+                baseEl,
+                idMap,
+                cssRules,
+                new Set(visited).add(id ?? hrefId),
+            );
         }
     }
 
@@ -97,7 +107,7 @@ export const resolveGradientDef = (
         ? parseTransformList(el.getAttribute('gradientTransform'))
         : (base?.gradientTransform ?? IDENTITY_MATRIX);
 
-    const ownStops = readGradientStops(el);
+    const ownStops = readGradientStops(el, cssRules);
     const stops = ownStops.length > 0 ? ownStops : (base?.stops ?? []);
 
     if (tag === 'lineargradient') {

@@ -9,6 +9,8 @@
         ".": "./src/index.ts"
     },
     "dependencies": {
-        "@xmldom/xmldom": "^0.9.10"
+        "@xmldom/xmldom": "^0.9.10",
+        "css-select": "^7.0.0",
+        "css-what": "^8.0.0"
     }
 }

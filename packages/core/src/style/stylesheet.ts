@@ -1,3 +1,7 @@
+import { parse as cssWhatParse, type Selector, SelectorType } from 'css-what';
+
+import { matchesSelector } from './domAdapter';
+
 // Inline `style="fill: ...; stroke: ..."` — deliberately not a full CSS parser (see plan v1 scope).
 const parseInlineStyle = (styleAttr: string | null): Map<string, string> => {
     const result = new Map<string, string>();
@@ -11,45 +15,52 @@ const parseInlineStyle = (styleAttr: string | null): Map<string, string> => {
 };
 
 /*
- * `<style>` block support, scoped to the common case rather than real CSS:
- * one compound selector per rule — a bare tag name, `.class`, `#id`, or any
- * no-combinator combination of those on a single element (`tag.class`,
- * `.a.b`, `tag#id`, ...) — with `,`-separated lists sharing one rule (e.g.
- * `.a, .b { ... }`). Matched with CSS's usual id > class > tag specificity,
- * ties broken by source order (later wins). No combinators
- * (descendant/child/sibling), no pseudo-classes/attribute selectors, no
+ * `<style>` block support: real selector matching (combinators,
+ * pseudo-classes, attribute selectors, ...) is delegated to `css-select`
+ * (see `domAdapter.ts`) rather than hand-rolled — a general CSS selector
+ * engine is a much bigger undertaking than the rest of the SVG spec, and
+ * `css-select` already gets it right. What stays hand-rolled here is
+ * everything *around* matching: reading `<style>` text into rule blocks,
+ * a `,`-separated selector list sharing one rule (e.g. `.a, .b { ... }`)
+ * becoming one `CssRule` per branch, and the cascade itself — CSS's usual
+ * specificity ordering, ties broken by source order (later wins). No
  * `!important`. At-rules (`@media`, `@keyframes`, etc.) are stripped
  * entirely rather than evaluated — a static PDF page has no viewport
  * breakpoints or animation timeline for them to apply to anyway.
  */
 export interface CssRule {
-    readonly tag: string | null;
-    readonly classes: readonly string[];
-    readonly id: string | null;
+    readonly selector: readonly Selector[];
+    readonly specificity: number;
     readonly declarations: ReadonlyMap<string, string>;
     readonly order: number;
 }
 
-const COMPOUND_SELECTOR_RE = /^([A-Za-z][\w-]*)?((?:[.#][A-Za-z_][\w-]*)*)$/;
-const SELECTOR_FRAGMENT_RE = /[.#][A-Za-z_][\w-]*/g;
 const CSS_RULE_RE = /([^{}]+)\{([^{}]*)\}/g;
 
-// Splits a compound selector like `tag.class#id` into its tag/classes/id parts, or returns null if it uses anything unsupported (combinators, pseudo-classes, attribute selectors, ...).
-const parseCompoundSelector = (
-    selector: string,
-): { tag: string | null; classes: string[]; id: string | null } | null => {
-    const match = COMPOUND_SELECTOR_RE.exec(selector);
-    if (!match) return null;
-    const [, tagRaw, fragments] = match;
-    const tag = tagRaw ? tagRaw.toLowerCase() : null;
-    const classes: string[] = [];
-    let id: string | null = null;
-    for (const fragment of fragments.match(SELECTOR_FRAGMENT_RE) ?? []) {
-        if (fragment.startsWith('.')) classes.push(fragment.slice(1));
-        else id = fragment.slice(1);
+/*
+ * CSS specificity: (id count, class/attribute/pseudo-class count,
+ * type/pseudo-element count), combined into one number the same way the
+ * old tag/class/id-only matcher already weighted them (id: 100, class:
+ * 10, tag: 1) so relative ordering of already-passing rules doesn't
+ * shift now that arbitrary selectors are possible. `css-what` represents
+ * both `#id` and `.class` as `Attribute` tokens (not distinct token
+ * kinds), so an id is an `Attribute` token specifically named `id`.
+ */
+const computeSpecificity = (tokens: readonly Selector[]): number => {
+    let idCount = 0;
+    let classCount = 0;
+    let typeCount = 0;
+    for (const token of tokens) {
+        if (token.type === SelectorType.Attribute) {
+            if (token.name === 'id') idCount++;
+            else classCount++;
+        } else if (token.type === SelectorType.Pseudo) {
+            classCount++;
+        } else if (token.type === SelectorType.Tag || token.type === SelectorType.PseudoElement) {
+            typeCount++;
+        }
     }
-    if (tag === null && classes.length === 0 && id === null) return null;
-    return { tag, classes, id };
+    return idCount * 100 + classCount * 10 + typeCount;
 };
 
 /*
@@ -173,17 +184,29 @@ export const parseStyleRules = (
                 const [, selectorListRaw, declBlock] = match;
                 const declarations = parseInlineStyle(declBlock);
                 if (declarations.size === 0) continue;
-                for (const rawSelector of selectorListRaw.split(',')) {
-                    const selector = rawSelector.trim();
-                    if (selector === '') continue;
-                    const parsed = parseCompoundSelector(selector);
-                    if (parsed) {
-                        rules.push({ ...parsed, declarations, order: order++ });
-                    } else {
-                        warnings.push(
-                            `<style> selector "${selector}" (combinators/pseudo-classes/attribute selectors are not supported) was skipped`,
-                        );
-                    }
+                /*
+                 * `css-what`'s `parse` handles the whole `,`-separated list at
+                 * once (respecting parens, so `:not(a, b)` isn't split
+                 * mid-argument the way a naive `.split(',')` would) and returns
+                 * one token array per branch — each becomes its own `CssRule`.
+                 */
+                let branches: Selector[][];
+                try {
+                    branches = cssWhatParse(selectorListRaw.trim());
+                } catch {
+                    warnings.push(
+                        `<style> selector "${selectorListRaw.trim()}" could not be parsed and was skipped`,
+                    );
+                    continue;
+                }
+                for (const selector of branches) {
+                    if (selector.length === 0) continue;
+                    rules.push({
+                        selector,
+                        specificity: computeSpecificity(selector),
+                        declarations,
+                        order: order++,
+                    });
                 }
             }
         } else {
@@ -195,26 +218,17 @@ export const parseStyleRules = (
 
 // Finds the winning declaration (if any) for `prop` on `el` across all matching rules, per the specificity/order rule documented above.
 const cssValueFor = (el: Element, prop: string, cssRules: readonly CssRule[]): string | null => {
-    const classes = el.getAttribute('class')?.trim().split(/\s+/) ?? [];
-    const id = el.getAttribute('id');
-    const tag = el.tagName.toLowerCase();
     let best: { value: string; specificity: number; order: number } | null = null;
     for (const rule of cssRules) {
         const value = rule.declarations.get(prop);
         if (value === undefined) continue;
-        const matches =
-            (rule.tag === null || rule.tag === tag) &&
-            (rule.id === null || rule.id === id) &&
-            rule.classes.every((c) => classes.includes(c));
-        if (!matches) continue;
-        const specificity =
-            (rule.id !== null ? 100 : 0) + rule.classes.length * 10 + (rule.tag !== null ? 1 : 0);
+        if (!matchesSelector(el, rule.selector)) continue;
         if (
             !best ||
-            specificity > best.specificity ||
-            (specificity === best.specificity && rule.order > best.order)
+            rule.specificity > best.specificity ||
+            (rule.specificity === best.specificity && rule.order > best.order)
         ) {
-            best = { value, specificity, order: rule.order };
+            best = { value, specificity: rule.specificity, order: rule.order };
         }
     }
     return best?.value ?? null;
@@ -222,9 +236,11 @@ const cssValueFor = (el: Element, prop: string, cssRules: readonly CssRule[]): s
 
 /*
  * `cssRules` is optional so call sites that don't have a `WalkContext` handy
- * (gradient stops, clip-path/mask/filter reads) keep working unchanged —
- * they just don't get `<style>` class support, which is an acceptable, much
- * rarer gap than fill/stroke/font on shapes and text.
+ * (clip-path/mask/filter reads) keep working unchanged — they just don't get
+ * `<style>` class support, which is an acceptable, much rarer gap than
+ * fill/stroke/font on shapes and text or gradient `<stop>` colors (both of
+ * which do thread `cssRules` through, see `resolveGradientDef` in
+ * `gradient.ts`).
  */
 export const readPresentation = (
     el: Element,

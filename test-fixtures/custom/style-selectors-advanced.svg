@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300">
+  <style>
+    /* universal + attribute selector */
+    *[data-zone="a"] { fill: #cccccc; }
+
+    /* descendant combinator, two levels */
+    g g rect { fill: #ff8800; }
+
+    /* direct child combinator */
+    #wrap > rect { stroke: #000066; stroke-width: 3; }
+
+    /* adjacent sibling combinator */
+    rect.first + rect { fill: #00aa88; }
+
+    /* general sibling combinator */
+    rect.first ~ circle { fill: #aa00aa; }
+
+    /* attribute operators: ^=, $=, *= */
+    rect[data-tag^="ico-"] { fill: #d10000; }
+    rect[data-tag$="-end"] { fill: #0044d1; }
+    rect[data-tag*="mid"] { fill: #e0a800; }
+
+    /* :not() combined with a class */
+    .row rect:not(.skip) { opacity: 0.6; }
+
+    /* :first-child / :last-child structural pseudo-classes */
+    .row rect:first-child { stroke: gold; stroke-width: 2; }
+    .row rect:last-child { stroke: crimson; stroke-width: 2; }
+
+    /* specificity: id beats everything else below, even a later rule */
+    #forced { fill: #111111; }
+    rect.big.wide.tall { fill: #ff0000; }
+
+    /* case-sensitive SVG tag name match: must apply (correct casing)... */
+    linearGradient stop:first-child { stop-color: #888888; }
+    /* ...but this decoy (wrong case) must NOT apply, proving matching is case-sensitive */
+    lineargradient stop:last-child { stop-color: #ff00ff; }
+
+    /* an intentionally malformed selector, should warn+skip without breaking the rest */
+    rect[unterminated { fill: #ffffff; }
+  </style>
+
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#000000"/>
+    </linearGradient>
+  </defs>
+
+  <!-- universal + attribute -->
+  <rect data-zone="a" x="10" y="10" width="30" height="30"/>
+
+  <!-- nested g g rect (descendant, two levels) -->
+  <g><g><rect x="60" y="10" width="30" height="30"/></g></g>
+
+  <!-- direct-child vs nested-in-svg (child combinator contrast) -->
+  <g id="wrap">
+    <rect x="110" y="10" width="30" height="30" fill="#eeeeee"/>
+    <svg x="150" y="10" width="30" height="30"><rect width="30" height="30" fill="#eeeeee"/></svg>
+  </g>
+
+  <!-- adjacent (+) vs general (~) sibling -->
+  <g transform="translate(0,60)">
+    <rect class="first" x="10" y="0" width="20" height="20" fill="#999999"/>
+    <rect x="35" y="0" width="20" height="20" fill="#999999"/>
+    <rect x="60" y="0" width="20" height="20" fill="#999999"/>
+    <circle cx="95" cy="10" r="10" fill="#999999"/>
+  </g>
+
+  <!-- attribute operators ^= $= *= -->
+  <g transform="translate(0,100)">
+    <rect data-tag="ico-home" x="10" y="0" width="20" height="20"/>
+    <rect data-tag="section-mid-part" x="35" y="0" width="20" height="20"/>
+    <rect data-tag="stream-end" x="60" y="0" width="20" height="20"/>
+    <rect data-tag="plain" x="85" y="0" width="20" height="20"/>
+  </g>
+
+  <!-- :not(), :first-child, :last-child inside .row -->
+  <g class="row" transform="translate(0,140)">
+    <rect x="10" y="0" width="20" height="20" fill="#3366cc"/>
+    <rect class="skip" x="35" y="0" width="20" height="20" fill="#3366cc"/>
+    <rect x="60" y="0" width="20" height="20" fill="#3366cc"/>
+  </g>
+
+  <!-- id specificity beating a triple-class compound -->
+  <rect id="forced" class="big wide tall" x="10" y="180" width="30" height="30"/>
+
+  <!-- case-sensitive tag name check via gradient fill (gray-to-black, not white-to-black or magenta) -->
+  <rect x="60" y="180" width="80" height="30" fill="url(#g1)"/>
+
+  <!-- malformed selector shouldn't have painted this white -->
+  <rect x="160" y="180" width="30" height="30" fill="#008000"/>
+</svg>

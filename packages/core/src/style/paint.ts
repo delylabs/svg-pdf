@@ -211,7 +211,7 @@ export const resolvePaint = (el: Element, inherited: ShapePaint, ctx: PaintConte
             const refEl = refId ? ctx.idMap.get(refId) : undefined;
             const refTag = refEl?.tagName.toLowerCase();
             if (refEl && refId && (refTag === 'lineargradient' || refTag === 'radialgradient')) {
-                const def = resolveGradientDef(refEl, ctx.idMap);
+                const def = resolveGradientDef(refEl, ctx.idMap, ctx.cssRules);
                 if (!def || def.stops.length === 0) return null;
                 if (def.stops.length === 1) return def.stops[0].color;
                 ctx.gradients.set(refId, def);
