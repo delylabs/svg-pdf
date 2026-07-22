@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.tsc-out/
 *.tsbuildinfo
 test-fixtures/visual-baselines/.debug/
 test-fixtures/rendered/
