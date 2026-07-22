@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">
+    <!-- <switch> renders only its first child; if the second (red) child also rendered on top of the first (green), this would show red instead of green -->
+    <switch>
+        <rect x="60" y="20" width="80" height="60" fill="#2ecc71"/>
+        <rect x="60" y="20" width="80" height="60" fill="#e74c3c"/>
+    </switch>
+</svg>

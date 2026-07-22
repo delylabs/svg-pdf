@@ -238,6 +238,13 @@ describe('parseSvgDocument', () => {
         expect(doc.instructions.some((i) => i.type === 'pushClip')).toBe(false);
     });
 
+    it('also skips the viewport clip for a <symbol> with overflow="auto" (behaves like "visible" here)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><symbol id="box" overflow="auto"><rect width="50" height="50" fill="#000"/></symbol></defs><use href="#box" x="0" y="0" width="20" height="10"/></svg>',
+        );
+        expect(doc.instructions.some((i) => i.type === 'pushClip')).toBe(false);
+    });
+
     it("resolves <use>'s percentage x/y against the current viewport", () => {
         const doc = parseSvgDocument(
             '<svg viewBox="0 0 200 100"><defs><symbol id="box"><rect width="10" height="10" fill="#000"/></symbol></defs><use href="#box" x="10%" y="10%"/></svg>',
@@ -357,12 +364,37 @@ describe('parseSvgDocument', () => {
         expect(doc.warnings.some((w) => w.includes('foreignobject'))).toBe(true);
     });
 
+    it('resolves a duplicate id to the first element in document order, not the last one parsed', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><rect id="box" width="5" height="5" fill="#ff0000"/><rect id="box" width="5" height="5" fill="#0000ff"/></defs><use href="#box"/></svg>',
+        );
+        expect(shapesOf(doc)[0].fill).toEqual({ r: 255, g: 0, b: 0 });
+    });
+
     it('throws a clear error for malformed SVG instead of crashing silently', () => {
         expect(() => parseSvgDocument('<svg><rect></svg>')).toThrow(/Invalid SVG/);
     });
 
     it('throws for a document without a root <svg>', () => {
         expect(() => parseSvgDocument('<not-svg></not-svg>')).toThrow(/Invalid SVG/);
+    });
+});
+
+describe('parseSvgDocument (switch)', () => {
+    it('renders only the first element child, not every child', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><switch><rect width="10" height="10" fill="#ff0000"/><rect width="20" height="20" fill="#0000ff"/></switch></svg>',
+        );
+        const shapes = shapesOf(doc);
+        expect(shapes).toHaveLength(1);
+        expect(shapes[0].fill).toEqual({ r: 255, g: 0, b: 0 });
+    });
+
+    it("still applies the <switch> element's own transform/clip to that first child", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><switch transform="translate(10,10)"><rect width="10" height="10" fill="#ff0000"/></switch></svg>',
+        );
+        expect(doc.instructions.map((i) => i.type)).toEqual(['pushMatrix', 'shape', 'popMatrix']);
     });
 });
 

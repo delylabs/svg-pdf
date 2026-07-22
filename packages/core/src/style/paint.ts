@@ -12,7 +12,7 @@ import type {
     TextTransform,
 } from '../types';
 import { parseFloats } from '../geometry/matrix';
-import { CSS_NAMED_COLORS, parseSvgColor } from './color';
+import { CSS_NAMED_COLORS, parseSvgColor, type RgbColor } from './color';
 import { resolveGradientDef, type GradientDef } from './gradient';
 import { URL_REF_RE } from './refs';
 import { type CssRule, readCssOnly, readPresentation } from './stylesheet';
@@ -38,6 +38,10 @@ const CSS_BLEND_MODES: Record<string, BlendMode> = {
 };
 
 export const DEFAULT_PAINT_ORDER: PaintOrder = ['fill', 'stroke', 'markers'];
+
+const LINE_CAPS: readonly LineCap[] = ['butt', 'round', 'square'];
+const LINE_JOINS: readonly LineJoin[] = ['miter', 'round', 'bevel'];
+const FILL_RULES: readonly FillRule[] = ['nonzero', 'evenodd'];
 
 /*
  * Parses SVG `paint-order`. Per spec: keywords `normal`, `fill`, `stroke`,
@@ -131,6 +135,23 @@ const parseDashArray = (raw: string): number[] | null => {
     return numbers.length % 2 === 0 ? numbers : [...numbers, ...numbers];
 };
 
+// A non-numeric presentation value (e.g. stroke-width="thin", a CSS keyword this parser doesn't resolve) must fall back to the inherited value per spec, not silently become NaN — parseFloat returns NaN, not null, so a plain `??` never catches it.
+const parseNumberOr = (raw: string | null, inherited: number): number => {
+    if (raw === null) return inherited;
+    const parsed = parseFloat(raw);
+    return Number.isNaN(parsed) ? inherited : parsed;
+};
+
+// Presentation keywords (stroke-linecap/-linejoin, fill-rule) fall back to inherited for any value outside their fixed keyword set, rather than casting an arbitrary/typo'd string straight through to the PDF adapter.
+const pickKeyword = <T extends string>(
+    raw: string | null,
+    valid: readonly T[],
+    inherited: T,
+): T => {
+    const trimmed = raw?.trim();
+    return trimmed && (valid as readonly string[]).includes(trimmed) ? (trimmed as T) : inherited;
+};
+
 // `font-size` supports relative "Nem" (multiplies the inherited size); px/pt/unitless all parse fine via parseFloat's own prefix stop.
 const parseFontSize = (raw: string, inherited: number): number => {
     const trimmed = raw.trim();
@@ -209,13 +230,23 @@ export const resolveStandardFont = (
     return 'Helvetica';
 };
 
+/*
+ * Per spec, `xml:space="preserve"` doesn't mean "keep the raw source bytes"
+ * — every newline/tab/carriage-return is still converted into a plain space
+ * character first (with the resulting run of spaces then drawn as-is); only
+ * the *default* (non-preserve) mode goes on to collapse consecutive spaces
+ * down to one. Exported so `parse/text.ts` can apply the same conversion to
+ * its own per-run text nodes, not just this module's warning-purposes text.
+ */
+export const normalizeWhitespaceChars = (text: string): string => text.replace(/[\t\n\r]/g, ' ');
+
 // Concatenates only this element's own direct text-node children (not descendant elements' text). Whitespace is collapsed to a single space and trimmed, same as browsers do by default — unless `preserveWhitespace` (from `xml:space="preserve"`/`white-space: pre`) says not to.
 export const collectDirectText = (el: Element, preserveWhitespace: boolean): string => {
     let out = '';
     for (const node of Array.from(el.childNodes)) {
         if (node.nodeType === 3) out += node.nodeValue ?? ''; // 3 = Node.TEXT_NODE (no `Node` global in a worker)
     }
-    return preserveWhitespace ? out : out.replace(/\s+/g, ' ').trim();
+    return preserveWhitespace ? normalizeWhitespaceChars(out) : out.replace(/\s+/g, ' ').trim();
 };
 
 // `text-transform`, applied to a run's already-collected text content (case mapping only — no locale-aware casing, same "common case" scope as the rest of this module).
@@ -236,18 +267,46 @@ export const applyTextTransform = (text: string, transform: TextTransform): stri
 export const hasUnencodableChar = (text: string): boolean =>
     Array.from(text).some((ch) => (ch.codePointAt(0) ?? 0) > 255);
 
+/*
+ * `currentColor` refers to the CSS `color` property's computed value on the
+ * element that uses it — a normal *inherited* CSS property, but a different
+ * inheritance chain from fill/stroke's own (which flows through `ShapePaint`/
+ * `resolvePaint`'s `inherited` parameter, not through `color`). Rather than
+ * threading a second inherited value through every recursive walk call for a
+ * keyword that's rare in practice, this walks up the DOM ancestor chain
+ * directly instead — lazily, only when `currentColor` is actually
+ * encountered — same parent-walking pattern `style/domAdapter.ts` already
+ * uses for CSS selector matching. Stops at the document node (its
+ * `parentNode` is never an Element) and falls back to black to match the
+ * pre-existing default when no ancestor sets `color` at all.
+ */
+const resolveCurrentColor = (el: Element, cssRules: readonly CssRule[] | undefined): RgbColor => {
+    let node: Element | null = el;
+    while (node) {
+        const raw = readPresentation(node, 'color', cssRules);
+        if (raw !== null) {
+            const parsed = parseSvgColor(raw);
+            if (parsed) return parsed;
+        }
+        const parent: Node | null = node.parentNode;
+        node = parent && parent.nodeType === 1 ? (parent as Element) : null;
+    }
+    return CSS_NAMED_COLORS.black;
+};
+
 // Resolves fill/stroke, falling back to `inherited` for anything unset on `el`.
 export const resolvePaint = (el: Element, inherited: ShapePaint, ctx: PaintContext): ShapePaint => {
     const resolveColorAttr = (name: string, currentValue: Paint): Paint => {
         const raw = readPresentation(el, name, ctx.cssRules);
         if (raw === null) return currentValue;
         const trimmed = raw.trim();
+        if (trimmed === 'currentColor') return resolveCurrentColor(el, ctx.cssRules);
         if (trimmed.startsWith('url(')) {
             const refId = URL_REF_RE.exec(trimmed)?.[1];
             const refEl = refId ? ctx.idMap.get(refId) : undefined;
             const refTag = refEl?.tagName.toLowerCase();
             if (refEl && refId && (refTag === 'lineargradient' || refTag === 'radialgradient')) {
-                const def = resolveGradientDef(refEl, ctx.idMap, ctx.cssRules);
+                const def = resolveGradientDef(refEl, ctx.idMap, ctx.cssRules, ctx.warnings);
                 if (!def || def.stops.length === 0) return null;
                 if (def.stops.length === 1) return def.stops[0].color;
                 ctx.gradients.set(refId, def);
@@ -306,18 +365,13 @@ export const resolvePaint = (el: Element, inherited: ShapePaint, ctx: PaintConte
         fillOpacity: opacityOf('fill-opacity', inherited.fillOpacity) * elementOpacity,
         stroke: resolveColorAttr('stroke', inherited.stroke),
         strokeOpacity: opacityOf('stroke-opacity', inherited.strokeOpacity) * elementOpacity,
-        strokeWidth: strokeWidthRaw
-            ? (parseFloat(strokeWidthRaw) ?? inherited.strokeWidth)
-            : inherited.strokeWidth,
-        lineCap: (lineCapRaw as LineCap) ?? inherited.lineCap,
-        lineJoin: (lineJoinRaw as LineJoin) ?? inherited.lineJoin,
-        miterLimit:
-            miterLimitRaw !== null
-                ? (parseFloat(miterLimitRaw) ?? inherited.miterLimit)
-                : inherited.miterLimit,
-        fillRule: (fillRuleRaw as FillRule) ?? inherited.fillRule,
+        strokeWidth: parseNumberOr(strokeWidthRaw, inherited.strokeWidth),
+        lineCap: pickKeyword(lineCapRaw, LINE_CAPS, inherited.lineCap),
+        lineJoin: pickKeyword(lineJoinRaw, LINE_JOINS, inherited.lineJoin),
+        miterLimit: parseNumberOr(miterLimitRaw, inherited.miterLimit),
+        fillRule: pickKeyword(fillRuleRaw, FILL_RULES, inherited.fillRule),
         dashArray: dashArrayRaw !== null ? parseDashArray(dashArrayRaw) : inherited.dashArray,
-        dashOffset: dashOffsetRaw !== null ? parseFloat(dashOffsetRaw) || 0 : inherited.dashOffset,
+        dashOffset: parseNumberOr(dashOffsetRaw, inherited.dashOffset),
         paintOrder: parsePaintOrder(paintOrderRaw, inherited.paintOrder),
         vectorEffect:
             vectorEffectRaw !== null

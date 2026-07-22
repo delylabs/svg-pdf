@@ -5,6 +5,7 @@ import {
     applyTextTransform,
     collectDirectText,
     hasUnencodableChar,
+    normalizeWhitespaceChars,
     parseLengthOrEmList,
     parseNumberList,
     resolvePaint,
@@ -127,7 +128,7 @@ function walkTextPathElement(el: Element, inherited: ShapePaint, ctx: WalkContex
         const childNodes = Array.from(subEl.childNodes);
         childNodes.forEach((node, index) => {
             if (node.nodeType === 3) {
-                let raw = node.nodeValue ?? '';
+                let raw = normalizeWhitespaceChars(node.nodeValue ?? '');
                 if (!subPaint.preserveWhitespace) {
                     raw = raw.replace(/\s+/g, ' ');
                     if (index === 0) raw = raw.replace(/^ /, '');
@@ -305,7 +306,7 @@ export function walkTextElement(
     childNodes.forEach((node, index) => {
         if (node.nodeType === 3) {
             // 3 = Node.TEXT_NODE (no `Node` global in a worker)
-            const raw = node.nodeValue ?? '';
+            const raw = normalizeWhitespaceChars(node.nodeValue ?? '');
             let text = raw;
             if (!paint.preserveWhitespace) {
                 text = text.replace(/\s+/g, ' ');

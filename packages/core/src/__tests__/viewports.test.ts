@@ -57,6 +57,13 @@ describe('parseSvgDocument (nested svg)', () => {
         expect(doc.instructions.some((i) => i.type === 'pushClip')).toBe(false);
     });
 
+    it('also skips the viewport clip for overflow="auto" (behaves like "visible" here)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><svg width="20" height="10" overflow="auto"><rect width="20" height="10"/></svg></svg>',
+        );
+        expect(doc.instructions.some((i) => i.type === 'pushClip')).toBe(false);
+    });
+
     it('defaults a nested <svg> without explicit width/height to 100% of the parent viewport', () => {
         const doc = parseSvgDocument(
             '<svg viewBox="0 0 100 100"><svg><rect width="10" height="10"/></svg></svg>',

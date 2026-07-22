@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">
+    <!-- The third stop's offset (0.3) is out of order — per spec it clamps up to the previous stop's offset (0.8), producing a hard blue-to-green edge at 0.8 instead of a reversed gradient -->
+    <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#e74c3c"/>
+            <stop offset="0.8" stop-color="#2ecc71"/>
+            <stop offset="0.3" stop-color="#3498db"/>
+        </linearGradient>
+    </defs>
+    <rect x="10" y="10" width="180" height="80" fill="url(#g)"/>
+</svg>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">
+    <!-- Two elements share id="box" (invalid SVG, but seen in the wild) — the FIRST one in document order (green) must win, matching a real DOM's getElementById -->
+    <defs>
+        <rect id="box" width="60" height="60" fill="#2ecc71"/>
+        <rect id="box" width="60" height="60" fill="#e74c3c"/>
+    </defs>
+    <use href="#box" x="70" y="20"/>
+</svg>

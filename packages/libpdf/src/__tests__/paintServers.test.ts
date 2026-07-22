@@ -5,6 +5,10 @@ import { describe, expect, it } from 'vitest';
 import { embedSvgInPdf } from '../embed';
 import { getPageContentText, getPatternContentText, ONE_PIXEL_PNG_DATA_URI } from './helpers';
 
+// Decodes the whole saved PDF to text — a shading's Function dict (Bounds/C0/C1) isn't inside a compressed content stream like the page/pattern/XObject helpers in ./helpers decode, so it's findable directly in the raw bytes.
+const getDocumentText = async (doc: ReturnType<typeof LibPDF.create>): Promise<string> =>
+    Buffer.from(await doc.save()).toString('latin1');
+
 describe('embedSvgInPdf (gradients)', () => {
     it('fills a gradient-referencing shape with a pattern instead of a solid color', async () => {
         const doc = LibPDF.create();
@@ -18,6 +22,40 @@ describe('embedSvgInPdf (gradients)', () => {
         expect(content).toMatch(/\/Pattern\s+cs/);
         expect(content).toMatch(/\/P\d+\s+scn/);
         expect(content).not.toMatch(/1 0 0 rg/);
+    });
+
+    it("pads stops to span the full [0,1] shading domain when the gradient's own stops don't reach 0 or 1, so color holds solid outside the authored range instead of fading across the whole remaining domain", async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 10 10"><defs><linearGradient id="g"><stop offset="0.2" stop-color="#ff0000"/><stop offset="0.8" stop-color="#0000ff"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/></svg>',
+            rotation: 0,
+        });
+        const text = await getDocumentText(doc);
+        const pairs = [
+            ...text.matchAll(/\/C0\s*\[([^\]]*)\][\s\S]{0,60}?\/C1\s*\[([^\]]*)\]/g),
+        ].map((m) => [m[1].trim(), m[2].trim()]);
+        // The synthetic padding segments hold a single color constant (C0 === C1): red before offset 0.2, blue after 0.8.
+        expect(pairs[0]).toEqual(['1 0 0', '1 0 0']);
+        expect(pairs[pairs.length - 1]).toEqual(['0 0 1', '0 0 1']);
+    });
+
+    it('keeps a duplicate (or spec-clamped out-of-order) stop offset strictly increasing in the PDF shading function, instead of a degenerate zero-width bound', async () => {
+        const doc = LibPDF.create();
+        await embedSvgInPdf(doc, {
+            svgText:
+                '<svg viewBox="0 0 10 10"><defs><linearGradient id="g"><stop offset="0" stop-color="#ff0000"/><stop offset="0.5" stop-color="#00ff00"/><stop offset="0.5" stop-color="#0000ff"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/></svg>',
+            rotation: 0,
+        });
+        const text = await getDocumentText(doc);
+        const bounds = text
+            .match(/\/Bounds\s*\[([^\]]*)\]/)![1]
+            .trim()
+            .split(/\s+/)
+            .map(Number);
+        for (let i = 1; i < bounds.length; i++) {
+            expect(bounds[i]).toBeGreaterThan(bounds[i - 1]);
+        }
     });
 });
 

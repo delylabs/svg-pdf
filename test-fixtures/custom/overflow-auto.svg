@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">
+    <!-- overflow="auto" behaves like "visible" here (no scrollbar-bearing viewport to make "auto" meaningfully different) — the oversized circle should spill past the nested 60x60 viewport instead of being clipped to it -->
+    <svg x="20" y="20" width="60" height="60" overflow="auto">
+        <circle cx="30" cy="30" r="50" fill="#3498db"/>
+    </svg>
+</svg>

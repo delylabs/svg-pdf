@@ -82,6 +82,12 @@ const warnUnhandledEffects = (el: Element, warnings: string[]): void => {
     }
 };
 
+// `overflow: auto` behaves like `visible` on these elements per the CSS Overflow spec (there's no scrollbar-bearing viewport to make "auto" meaningfully different) — only `hidden`/`scroll`/the default `visible` semantics actually clip.
+const isOverflowVisible = (el: Element): boolean => {
+    const value = readPresentation(el, 'overflow')?.trim();
+    return value === 'visible' || value === 'auto';
+};
+
 export function walkNode(
     el: Element,
     inherited: ShapePaint,
@@ -186,7 +192,7 @@ export function walkNode(
                 childViewportWidth = vbWidth;
                 childViewportHeight = vbHeight;
             }
-            const overflowVisible = readPresentation(referenced, 'overflow')?.trim() === 'visible';
+            const overflowVisible = isOverflowVisible(referenced);
 
             withPush(useMatrix, ctx, () => {
                 withClip(el, ctx, () => {
@@ -256,6 +262,19 @@ export function walkNode(
         const href = el.getAttribute('href') ?? el.getAttribute('xlink:href');
         if (!href) {
             ctx.warnings.push('<image> without a href was skipped');
+            return;
+        }
+        /*
+         * Per spec, an omitted width/height falls back to the image's own
+         * intrinsic size ("auto") — not supported here (no image-decoding at
+         * parse time), so this is warned rather than silently vanishing like
+         * an explicit `width="0"` does below (a deliberate, common way to
+         * "hide" an image, not a missing feature).
+         */
+        if (!el.hasAttribute('width') || !el.hasAttribute('height')) {
+            ctx.warnings.push(
+                '<image> without an explicit width/height was skipped (intrinsic image-size fallback is not supported)',
+            );
             return;
         }
         const width = num(el.getAttribute('width'));
@@ -341,7 +360,7 @@ export function walkNode(
             childViewportWidth = vbWidth;
             childViewportHeight = vbHeight;
         }
-        const overflowVisible = readPresentation(el, 'overflow')?.trim() === 'visible';
+        const overflowVisible = isOverflowVisible(el);
 
         withPush(offsetMatrix, ctx, () => {
             const clipViewport = !overflowVisible;
@@ -382,10 +401,22 @@ export function walkNode(
          * plain transparent group instead, same as `<g>`.
          */
         const linkHref = tag === 'a' ? resolveLinkHref(el, ctx) : null;
+        /*
+         * Per spec, <switch> renders only the first child that passes its
+         * conditional-processing test (requiredFeatures/requiredExtensions/
+         * systemLanguage) — those attributes aren't evaluated here (out of
+         * scope), so this is a documented approximation: always the first
+         * element child, regardless of what it declares. That's still a
+         * major improvement over rendering every child (the previous
+         * behavior, identical to <g>), which double-draws the common
+         * Illustrator/Inkscape "fallback content" pattern.
+         */
+        const children =
+            tag === 'switch' ? Array.from(el.children).slice(0, 1) : Array.from(el.children);
         withPush(transform, ctx, () => {
             withClip(el, ctx, () => {
                 if (linkHref !== null) ctx.instructions.push({ type: 'linkStart', href: linkHref });
-                for (const child of Array.from(el.children)) {
+                for (const child of children) {
                     walkNode(child, paint, ctx, elMatrix);
                 }
                 if (linkHref !== null) ctx.instructions.push({ type: 'linkEnd' });
@@ -447,12 +478,12 @@ export function walkNode(
 
 export const buildIdMap = (root: Element): Map<string, Element> => {
     const idMap = new Map<string, Element>();
-    const stack = [root];
-    while (stack.length > 0) {
-        const el = stack.pop()!;
+    // Pre-order, document-order traversal (not a LIFO stack, which would visit later siblings first) so that on a duplicate id — invalid SVG, but seen in the wild — the first occurrence in document order wins, matching a real DOM's getElementById instead of letting whichever element happens to be visited last silently win.
+    const visit = (el: Element): void => {
         const id = el.getAttribute('id');
-        if (id) idMap.set(id, el);
-        stack.push(...Array.from(el.children));
-    }
+        if (id && !idMap.has(id)) idMap.set(id, el);
+        for (const child of Array.from(el.children)) visit(child);
+    };
+    visit(root);
     return idMap;
 };

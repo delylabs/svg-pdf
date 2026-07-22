@@ -269,6 +269,13 @@ describe('parseSvgDocument (text)', () => {
         );
         expect(textsOf(doc)[0].text).toBe('  a   b  ');
     });
+
+    it('converts newlines/tabs to plain spaces even with xml:space="preserve", per spec (preserve keeps the resulting spaces, not the raw source characters)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><text xml:space="preserve">a\nb\tc</text></svg>',
+        );
+        expect(textsOf(doc)[0].text).toBe('a b c');
+    });
 });
 
 describe('parseSvgDocument (textPath)', () => {
@@ -400,6 +407,13 @@ describe('parseSvgDocument (textPath)', () => {
         expect(textPaths[1].startsNewChunk).toBe(false);
         expect(textPaths[1].fill).toEqual({ r: 255, g: 0, b: 0 });
         expect(textPaths[1].fontWeight).toBe('bold');
+    });
+
+    it('converts newlines/tabs to plain spaces with xml:space="preserve", same as a plain <text> run', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><path id="p" d="M0 0 L100 0"/><text xml:space="preserve"><textPath href="#p">a\nb\tc</textPath></text></svg>',
+        );
+        expect(textPathsOf(doc)[0].text).toBe('a b c');
     });
 });
 

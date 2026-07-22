@@ -53,6 +53,14 @@ describe('parseSvgDocument (image)', () => {
         expect(doc.warnings).toEqual([]);
     });
 
+    it('warns and skips (rather than silently vanishing) when width or height is omitted entirely', () => {
+        const doc = parseSvgDocument(
+            `<svg viewBox="0 0 100 100"><image href="${ONE_PIXEL_PNG_DATA_URI}" height="10"/></svg>`,
+        );
+        expect(imagesOf(doc)).toHaveLength(0);
+        expect(doc.warnings.some((w) => w.includes('intrinsic image-size'))).toBe(true);
+    });
+
     it('parses preserveAspectRatio="none" as the stretch mode', () => {
         const doc = parseSvgDocument(
             `<svg viewBox="0 0 100 100"><image href="${ONE_PIXEL_PNG_DATA_URI}" width="10" height="10" preserveAspectRatio="none"/></svg>`,

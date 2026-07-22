@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60">
+    <!-- xml:space="preserve" still converts newline/tab into plain space characters per spec, rather than keeping the raw control characters (which some PDF viewers render as missing/blank glyphs) -->
+    <text x="10" y="35" font-size="16" xml:space="preserve">a
+b	c</text>
+</svg>

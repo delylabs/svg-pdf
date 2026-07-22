@@ -212,8 +212,14 @@ const hslToRgb = (h: number, s: number, l: number): RgbColor => {
 /**
  * Resolves a CSS/SVG color value to RGB. Returns `null` for `none`/`transparent`
  * (explicitly "no paint") and for anything unrecognized (`url(#...)` paint
- * servers are handled by the caller before reaching here, `currentColor` falls
- * back to black since there's no CSS cascade to resolve it against).
+ * servers are handled by the caller before reaching here). `currentColor`
+ * falls back to black here since this function has no access to the
+ * element/ancestor chain needed to resolve the CSS `color` property it
+ * actually refers to — callers resolving fill/stroke on a real element (see
+ * `resolveCurrentColor` in `style/paint.ts`) intercept `currentColor` before
+ * it ever reaches this function; only a caller with no such context (or a
+ * `color` value that's itself `currentColor`, a rare self-referential edge
+ * case) sees this fallback.
  */
 export const parseSvgColor = (value: string | null): RgbColor | null => {
     if (!value) return null;

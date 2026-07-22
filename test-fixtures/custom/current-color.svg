@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">
+    <!-- fill="currentColor" resolves against the CSS color property, walking up to an ancestor's color when the element doesn't set its own -->
+    <g color="#2ecc71">
+        <circle cx="50" cy="50" r="40" fill="currentColor"/>
+    </g>
+    <rect x="120" y="10" width="80" height="80" fill="currentColor" color="#3498db"/>
+</svg>

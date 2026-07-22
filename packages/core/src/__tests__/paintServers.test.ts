@@ -80,6 +80,42 @@ describe('parseSvgDocument (gradients)', () => {
         expect(shapesOf(doc)[0].fill).toBeNull();
         expect(doc.warnings.some((w) => w.includes('reference target not found'))).toBe(true);
     });
+
+    it("clamps an out-of-order stop offset up to the previous stop's offset instead of leaving it non-monotonic", () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><linearGradient id="g"><stop offset="0.5" stop-color="#ff0000"/><stop offset="0.2" stop-color="#00ff00"/><stop offset="1" stop-color="#0000ff"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/></svg>',
+        );
+        const def = doc.gradients.get('g');
+        expect(def?.stops.map((s) => s.offset)).toEqual([0.5, 0.5, 1]);
+    });
+
+    it('warns when spreadMethod is "reflect" or "repeat" (drawn as the default "pad" instead)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><linearGradient id="g" spreadMethod="reflect"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/></svg>',
+        );
+        expect(doc.warnings.some((w) => w.includes('spreadMethod="reflect"'))).toBe(true);
+    });
+
+    it('does not warn for the default spreadMethod="pad" (or when absent)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><linearGradient id="g" spreadMethod="pad"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/></svg>',
+        );
+        expect(doc.warnings).toEqual([]);
+    });
+
+    it('warns when any stop has stop-opacity less than 1 (drawn fully opaque instead)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><linearGradient id="g"><stop offset="0" stop-color="#ff0000" stop-opacity="1"/><stop offset="1" stop-color="#0000ff" stop-opacity="0"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/></svg>',
+        );
+        expect(doc.warnings.some((w) => w.includes('stop-opacity'))).toBe(true);
+    });
+
+    it('does not warn when every stop-opacity is 1 (or unset)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><linearGradient id="g"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff" stop-opacity="1"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/></svg>',
+        );
+        expect(doc.warnings).toEqual([]);
+    });
 });
 
 describe('parseSvgDocument (patterns)', () => {

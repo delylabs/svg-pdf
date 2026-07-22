@@ -49,12 +49,16 @@ const readGradientStops = (
     cssRules: readonly CssRule[] | undefined,
 ): GradientStop[] => {
     const stops: GradientStop[] = [];
+    // Per spec, each stop's offset is clamped up to at least the previous (already-clamped) stop's offset, not just to [0,1] independently — otherwise an out-of-order offset list (rare, but seen from buggy exporters) produces a PDF shading function with a non-monotonic domain.
+    let previousOffset = 0;
     for (const child of Array.from(el.children)) {
         if (child.tagName.toLowerCase() !== 'stop') continue;
-        const offset = Math.min(
+        const rawOffset = Math.min(
             1,
             Math.max(0, parseGradientCoord(child.getAttribute('offset'), 0)),
         );
+        const offset = Math.max(rawOffset, previousOffset);
+        previousOffset = offset;
         const color =
             parseSvgColor(readPresentation(child, 'stop-color', cssRules)) ??
             CSS_NAMED_COLORS.black;
@@ -64,6 +68,35 @@ const readGradientStops = (
         stops.push({ offset, color, opacity });
     }
     return stops;
+};
+
+// `spreadMethod="reflect"/"repeat"` (spec default: "pad") has no equivalent in @libpdf/core's tiling-pattern-free shading API, which always pads — checked against only the element's own attribute (not chased through href inheritance like gradientUnits/gradientTransform above), matching this module's existing "best effort" scope.
+const warnUnsupportedSpreadMethod = (el: Element, warnings: string[] | undefined): void => {
+    const spreadMethod = el.getAttribute('spreadMethod')?.trim().toLowerCase();
+    if (spreadMethod === 'reflect' || spreadMethod === 'repeat') {
+        warnings?.push(
+            `spreadMethod="${spreadMethod}" is not supported and was drawn as "pad" (the default) instead`,
+        );
+    }
+};
+
+/*
+ * `stop-opacity` isn't currently honored — a PDF shading function's stops
+ * carry only RGB, no per-stop alpha; reproducing varying transparency along
+ * a gradient needs a luminosity soft mask, which `@libpdf/core` doesn't
+ * expose an API for yet (same root cause as the `<mask>` gap documented in
+ * supported-features.md). Checked once per element's own stop list (not the
+ * merged `stops` a derived-via-href gradient ends up with), so an inherited
+ * base gradient's non-opaque stops only warn once, at the element that
+ * actually owns them.
+ */
+const warnUnsupportedStopOpacity = (
+    stops: readonly GradientStop[],
+    warnings: string[] | undefined,
+): void => {
+    if (stops.some((stop) => stop.opacity !== 1)) {
+        warnings?.push('stop-opacity is not supported and stops were drawn fully opaque instead');
+    }
 };
 
 /*
@@ -76,10 +109,13 @@ export const resolveGradientDef = (
     el: Element,
     idMap: ReadonlyMap<string, Element>,
     cssRules?: readonly CssRule[],
+    warnings?: string[],
     visited: ReadonlySet<string> = new Set(),
 ): GradientDef | null => {
     const tag = el.tagName.toLowerCase();
     if (tag !== 'lineargradient' && tag !== 'radialgradient') return null;
+
+    warnUnsupportedSpreadMethod(el, warnings);
 
     const id = el.getAttribute('id');
     const hrefId = resolveHref(el);
@@ -87,7 +123,13 @@ export const resolveGradientDef = (
     if (hrefId && !visited.has(hrefId) && visited.size < MAX_USE_DEPTH) {
         const baseEl = idMap.get(hrefId);
         if (baseEl) {
-            base = resolveGradientDef(baseEl, idMap, cssRules, new Set(visited).add(id ?? hrefId));
+            base = resolveGradientDef(
+                baseEl,
+                idMap,
+                cssRules,
+                warnings,
+                new Set(visited).add(id ?? hrefId),
+            );
         }
     }
 
@@ -103,6 +145,7 @@ export const resolveGradientDef = (
         : (base?.gradientTransform ?? IDENTITY_MATRIX);
 
     const ownStops = readGradientStops(el, cssRules);
+    warnUnsupportedStopOpacity(ownStops, warnings);
     const stops = ownStops.length > 0 ? ownStops : (base?.stops ?? []);
 
     if (tag === 'lineargradient') {
