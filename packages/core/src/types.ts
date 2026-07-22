@@ -41,8 +41,9 @@ export type LineJoin = 'miter' | 'round' | 'bevel';
 
 /*
  * Matches @libpdf/core's own `BlendMode` type (PascalCase) rather than
- * importing it directly — this parsing layer stays library-agnostic, same as
- * the rest of this file; embed.ts passes the value straight through.
+ * importing it directly — this parsing layer stays independent of any one
+ * PDF library, same as the rest of this file; embed.ts passes the value
+ * straight through.
  */
 export type BlendMode =
     | 'Normal'

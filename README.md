@@ -1,6 +1,6 @@
 # svg-pdf
 
-`@svg-pdf/core` — a worker-safe, PDF-engine-agnostic SVG-to-PDF vector parser.
+`@svg-pdf/core` — a worker-safe SVG-to-PDF vector parser that isn't tied to any specific PDF library.
 
 **Status:** pre-release (`0.x`), not yet published to npm.
 
@@ -55,6 +55,7 @@ This is an npm workspaces monorepo (`packages/*`) — no separate per-package in
 git clone <repo-url>
 cd svg-pdf
 npm install            # also wires up the local git hooks, see "Contributing"
+npm run build          # compiles each package's dist/ output, needed before test/typecheck below
 npm run test           # unit tests
 npm run test:visual    # SVG-vs-PDF visual regression tests (renders both and diffs pixels)
 npm run typecheck      # tsc -b across all packages

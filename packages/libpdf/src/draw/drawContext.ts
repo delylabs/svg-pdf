@@ -26,7 +26,7 @@ import { type CharLayout } from './textLayout';
 export const concat = (m: Matrix2D): ReturnType<typeof ops.concatMatrix> =>
     ops.concatMatrix(m.a, m.b, m.c, m.d, m.e, m.f);
 
-// Counter-flips the ambient CTM's inherited Y-flip for anything (text glyphs, image XObjects) whose own "up" direction isn't transform-agnostic like a filled path is — see the doc comments at each call site.
+// Counter-flips the ambient CTM's inherited Y-flip for anything (text glyphs, image XObjects) whose own "up" direction changes under that flip, unlike a filled path — see the doc comments at each call site.
 export const FLIP_Y: Matrix2D = { a: 1, b: 0, c: 0, d: -1, e: 0, f: 0 };
 
 /*

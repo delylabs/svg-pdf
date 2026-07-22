@@ -1,7 +1,26 @@
 {
     "name": "@svg-pdf/core",
-    "version": "0.1.0",
+    "version": "0.1.1",
+    "description": "SVG to real PDF vectors — not locked to one PDF library",
+    "keywords": [
+        "svg",
+        "pdf",
+        "typescript",
+        "web-worker",
+        "vector-graphics",
+        "pdf-generation",
+        "svg-to-pdf"
+    ],
     "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/delylabs/svg-pdf.git",
+        "directory": "packages/core"
+    },
+    "homepage": "https://github.com/delylabs/svg-pdf#readme",
+    "bugs": {
+        "url": "https://github.com/delylabs/svg-pdf/issues"
+    },
     "type": "module",
     "publishConfig": {
         "access": "public"
