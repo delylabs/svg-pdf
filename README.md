@@ -2,7 +2,7 @@
 
 `@svg-pdf/core` — a worker-safe SVG-to-PDF vector parser that isn't tied to any specific PDF library.
 
-**Status:** pre-release (`0.x`), not yet published to npm.
+**Status:** early (`0.x`), published to npm — [`@svg-pdf/core`](https://www.npmjs.com/package/@svg-pdf/core), [`@svg-pdf/libpdf`](https://www.npmjs.com/package/@svg-pdf/libpdf).
 
 ## Motivation
 
@@ -13,6 +13,10 @@ For real vector embedding specifically, two established options exist, each tied
 svg-pdf takes a different structural approach: a DOM-free core (`DOMParser` only) that parses SVG into a neutral instruction list, plus separate **adapter** packages that translate that list into calls for one specific PDF library. Anything the parser can't handle is skipped individually with a collected warning instead of failing the whole conversion.
 
 ## Usage
+
+```
+npm install @svg-pdf/libpdf @libpdf/core
+```
 
 ```ts
 import { PDF as LibPDF } from '@libpdf/core';
@@ -41,7 +45,7 @@ Future adapters follow the same pattern, named after the library they target, fo
 
 > `@libpdf/core` is named here only to describe compatibility — svg-pdf is not affiliated with or endorsed by that project.
 
-MIT licensed (see `LICENSE`; third-party code this project ports from is credited in `THIRD_PARTY_NOTICES.md`). Not set up yet: CI, npm publishing.
+MIT licensed (see `LICENSE`; third-party code this project ports from is credited in `THIRD_PARTY_NOTICES.md`).
 
 ## Supported
 

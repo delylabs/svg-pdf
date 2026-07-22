@@ -6,7 +6,7 @@ Not just "worker-safe" — every package should run in all three environments. A
 
 ## Feature gaps
 
-Actionable gaps — no technical blocker, just not done yet. Full detail on each lives in `docs/supported-features.md`, under "Things to know" → "Not yet implemented". Planned to be picked off gradually after the npm publish below.
+Actionable gaps — no technical blocker, just not done yet. Full detail on each lives in `docs/supported-features.md`, under "Things to know" → "Not yet implemented". Planned to be picked off gradually.
 
 - `<clipPath>` content limited to shapes/`<g>`/`<use>` — text, images, etc. inside one are skipped instead of supported.
 - Opacity on a `<g>` isn't isolated — overlapping children inside an opacity group look more transparent than they should.
@@ -21,6 +21,10 @@ Actionable gaps — no technical blocker, just not done yet. Full detail on each
 - Phase 3: coverage gaps from the audit — done
 - Phase 4: polish, API surface, and docs — done
 
+## Publish — done
+
+`@svg-pdf/core` and `@svg-pdf/libpdf` are published on npm.
+
 ## To do
 
-Publish prep (build output + `exports` maps instead of `main: src/index.ts`), then npm publish.
+Nothing scheduled — pick off items from "Feature gaps" above as they come up.
