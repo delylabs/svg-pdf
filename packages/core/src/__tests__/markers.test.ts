@@ -88,6 +88,20 @@ describe('parseSvgDocument (markers)', () => {
         expect(def?.instructions.some((i) => i.type === 'shape')).toBe(true);
     });
 
+    it('flips only the marker-start instance 180° for orient="auto-start-reverse" (marker-mid/-end unaffected)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><marker id="m" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><circle cx="2" cy="2" r="2"/></marker></defs><path d="M0,0 L10,0 L20,0" marker-start="url(#m)" marker-mid="url(#m)" marker-end="url(#m)"/></svg>',
+        );
+        const markers = markersOf(doc);
+        const start = markers.find((m) => m.type === 'marker' && m.x === 0);
+        const mid = markers.find((m) => m.type === 'marker' && m.x === 10);
+        const end = markers.find((m) => m.type === 'marker' && m.x === 20);
+        // The path points straight along +x (angle 0), so a plain "auto" marker-start would also be 0 — reversed, it should be π (or -π).
+        expect(Math.abs(start && 'angle' in start ? start.angle : NaN)).toBeCloseTo(Math.PI);
+        expect(mid && 'angle' in mid ? mid.angle : NaN).toBeCloseTo(0);
+        expect(end && 'angle' in end ? end.angle : NaN).toBeCloseTo(0);
+    });
+
     it('warns and skips a marker that references itself (a reference cycle)', () => {
         const doc = parseSvgDocument(
             '<svg viewBox="0 0 100 100"><defs><marker id="m" markerWidth="4" markerHeight="4"><line x1="0" y1="0" x2="1" y2="1" marker-start="url(#m)"/></marker></defs><line x1="0" y1="0" x2="10" y2="0" marker-start="url(#m)"/></svg>',

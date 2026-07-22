@@ -1,3 +1,6 @@
+import type { CssRule } from './stylesheet';
+import { readPresentation } from './stylesheet';
+
 // --- Color parsing -------------------------------------------------------
 
 export interface RgbColor {
@@ -216,7 +219,7 @@ const hslToRgb = (h: number, s: number, l: number): RgbColor => {
  * falls back to black here since this function has no access to the
  * element/ancestor chain needed to resolve the CSS `color` property it
  * actually refers to — callers resolving fill/stroke on a real element (see
- * `resolveCurrentColor` in `style/paint.ts`) intercept `currentColor` before
+ * `resolveCurrentColor` below) intercept `currentColor` before
  * it ever reaches this function; only a caller with no such context (or a
  * `color` value that's itself `currentColor`, a rare self-referential edge
  * case) sees this fallback.
@@ -259,4 +262,39 @@ export const parseSvgColor = (value: string | null): RgbColor | null => {
     }
 
     return CSS_NAMED_COLORS[trimmed.toLowerCase()] ?? null;
+};
+
+/*
+ * `currentColor` refers to the CSS `color` property's computed value on the
+ * element that uses it — a normal *inherited* CSS property, but a different
+ * inheritance chain from fill/stroke's own (which flows through `ShapePaint`/
+ * `resolvePaint`'s `inherited` parameter, not through `color`). Rather than
+ * threading a second inherited value through every recursive walk call for a
+ * keyword that's rare in practice, this walks up the DOM ancestor chain
+ * directly instead — lazily, only when `currentColor` is actually
+ * encountered — same parent-walking pattern `style/domAdapter.ts` already
+ * uses for CSS selector matching. Stops at the document node (its
+ * `parentNode` is never an Element) and falls back to black to match the
+ * pre-existing default when no ancestor sets `color` at all.
+ *
+ * Lives here (not in `style/paint.ts`, where fill/stroke resolution
+ * otherwise lives) so both `paint.ts` and `gradient.ts` — a gradient
+ * `<stop>`'s own `stop-color="currentColor"` needs the exact same
+ * resolution — can use it without an import cycle between them.
+ */
+export const resolveCurrentColor = (
+    el: Element,
+    cssRules: readonly CssRule[] | undefined,
+): RgbColor => {
+    let node: Element | null = el;
+    while (node) {
+        const raw = readPresentation(node, 'color', cssRules);
+        if (raw !== null) {
+            const parsed = parseSvgColor(raw);
+            if (parsed) return parsed;
+        }
+        const parent: Node | null = node.parentNode;
+        node = parent && parent.nodeType === 1 ? (parent as Element) : null;
+    }
+    return CSS_NAMED_COLORS.black;
 };

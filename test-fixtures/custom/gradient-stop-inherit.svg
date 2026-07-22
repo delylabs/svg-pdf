@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 100">
+  <defs>
+    <radialGradient id="ygw" stop-color="green">
+      <stop offset="0%" stop-color="yellow"/>
+      <stop offset="50%" stop-color="inherit"/>
+      <stop offset="100%" stop-color="white"/>
+    </radialGradient>
+    <radialGradient id="yrw" color="#770000">
+      <stop offset="0%" stop-color="yellow"/>
+      <stop offset="50%" stop-color="currentColor"/>
+      <stop offset="100%" stop-color="white"/>
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="140" height="100" fill="url(#ygw)"/>
+  <rect x="160" y="0" width="140" height="100" fill="url(#yrw)"/>
+</svg>

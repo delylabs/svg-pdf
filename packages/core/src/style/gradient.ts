@@ -1,5 +1,5 @@
 import { IDENTITY_MATRIX, type Matrix2D, parseTransformList } from '../geometry/matrix';
-import { CSS_NAMED_COLORS, parseSvgColor, type RgbColor } from './color';
+import { CSS_NAMED_COLORS, parseSvgColor, resolveCurrentColor, type RgbColor } from './color';
 import { MAX_USE_DEPTH, resolveHref } from './refs';
 import { type CssRule, readPresentation } from './stylesheet';
 
@@ -44,6 +44,44 @@ const parseGradientCoord = (raw: string | null, fallback: number): number => {
     return trimmed.endsWith('%') ? parsed / 100 : parsed;
 };
 
+/*
+ * `stop-color` isn't an inherited CSS property (its initial value is black,
+ * per spec) — but an explicit `inherit` keyword always forces the parent
+ * element's own computed value regardless, and `<stop>`'s parent is the
+ * `<linearGradient>`/`<radialGradient>` itself. Rare in practice (real
+ * export tooling doesn't emit it), but cheap to walk: climb past any chain
+ * of ancestors that also say "inherit", stopping at the first one that sets
+ * `stop-color` to something else, or falling back to the property's own
+ * initial value (black) if none do.
+ */
+const resolveInheritedStopColor = (
+    el: Element,
+    cssRules: readonly CssRule[] | undefined,
+): RgbColor => {
+    let node: Node | null = el.parentNode;
+    while (node && node.nodeType === 1) {
+        const raw = readPresentation(node as Element, 'stop-color', cssRules);
+        if (raw === null) return CSS_NAMED_COLORS.black;
+        const trimmed = raw.trim();
+        if (trimmed === 'inherit') {
+            node = (node as Element).parentNode;
+            continue;
+        }
+        if (trimmed === 'currentColor') return resolveCurrentColor(node as Element, cssRules);
+        return parseSvgColor(raw) ?? CSS_NAMED_COLORS.black;
+    }
+    return CSS_NAMED_COLORS.black;
+};
+
+const resolveStopColor = (stopEl: Element, cssRules: readonly CssRule[] | undefined): RgbColor => {
+    const raw = readPresentation(stopEl, 'stop-color', cssRules);
+    if (raw === null) return CSS_NAMED_COLORS.black;
+    const trimmed = raw.trim();
+    if (trimmed === 'inherit') return resolveInheritedStopColor(stopEl, cssRules);
+    if (trimmed === 'currentColor') return resolveCurrentColor(stopEl, cssRules);
+    return parseSvgColor(raw) ?? CSS_NAMED_COLORS.black;
+};
+
 const readGradientStops = (
     el: Element,
     cssRules: readonly CssRule[] | undefined,
@@ -59,9 +97,7 @@ const readGradientStops = (
         );
         const offset = Math.max(rawOffset, previousOffset);
         previousOffset = offset;
-        const color =
-            parseSvgColor(readPresentation(child, 'stop-color', cssRules)) ??
-            CSS_NAMED_COLORS.black;
+        const color = resolveStopColor(child, cssRules);
         const opacityRaw = readPresentation(child, 'stop-opacity', cssRules);
         const opacity =
             opacityRaw === null ? 1 : Math.min(1, Math.max(0, parseFloat(opacityRaw) || 0));

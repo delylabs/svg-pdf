@@ -72,6 +72,36 @@ describe('computeViewBoxTransform', () => {
         expect(m.f).toBeCloseTo(50); // full leftover height (100 - 50) on the max side
     });
 
+    it('centers vertically only for xMinYMid (min on x, split evenly on y)', () => {
+        const m = computeViewBoxTransform(0, 0, 100, 50, 100, 100, 'xMinYMid meet');
+        expect(m.e).toBeCloseTo(0);
+        expect(m.f).toBeCloseTo(25);
+    });
+
+    it('centers horizontally only for xMidYMin (split evenly on x, min on y)', () => {
+        const m = computeViewBoxTransform(0, 0, 50, 100, 100, 100, 'xMidYMin meet');
+        expect(m.e).toBeCloseTo(25);
+        expect(m.f).toBeCloseTo(0);
+    });
+
+    it('pins to the max edge on y only for xMidYMax (split evenly on x, max on y)', () => {
+        const m = computeViewBoxTransform(0, 0, 100, 50, 100, 100, 'xMidYMax meet');
+        expect(m.e).toBeCloseTo(0);
+        expect(m.f).toBeCloseTo(50);
+    });
+
+    it('pins to the max edge on x for xMaxYMid (y has no leftover space in this viewBox to center)', () => {
+        const m = computeViewBoxTransform(0, 0, 50, 100, 100, 100, 'xMaxYMid meet');
+        expect(m.e).toBeCloseTo(50);
+        expect(m.f).toBeCloseTo(0);
+    });
+
+    it('pins to the max edge on x only for xMaxYMin (max on x, min on y)', () => {
+        const m = computeViewBoxTransform(0, 0, 50, 100, 100, 100, 'xMaxYMin meet');
+        expect(m.e).toBeCloseTo(50);
+        expect(m.f).toBeCloseTo(0);
+    });
+
     it('folds the viewBox origin into the translation', () => {
         const m = computeViewBoxTransform(10, 20, 100, 100, 100, 100, 'none');
         expect(m.e).toBeCloseTo(-10);

@@ -42,6 +42,12 @@ const KNOWN_UNSUPPORTED_ROOT: Record<string, string> = {};
  *   (and everything inside it) from the clip region entirely, with or
  *   without a `transform` on the `<g>`. A `<clipPath>` child with its own
  *   `transform` attribute (no `<g>` wrapper) renders fine.
+ * - A generic `font-family` (e.g. "sans-serif") with no embedded font —
+ *   resvg substitutes its own bundled fallback font, which has visibly
+ *   different glyph shapes from the PDF standard-14 font we use, enough to
+ *   blow the mismatch threshold on text-heavy fixtures on its own. Keep
+ *   custom fixtures' text content short/sparse, or avoid relying on default
+ *   font substitution for anything pixel-dense.
  */
 
 const fixtures = fs

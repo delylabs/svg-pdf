@@ -46,6 +46,49 @@ describe('parseSvgDocument (gradients)', () => {
         expect(shapesOf(doc)[0].bbox).toBeNull();
     });
 
+    it('parses gradientTransform into the resolved matrix', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><linearGradient id="g" gradientTransform="translate(5,7) scale(2)"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/></svg>',
+        );
+        const def = doc.gradients.get('g');
+        expect(def?.gradientTransform).toEqual({ a: 2, b: 0, c: 0, d: 2, e: 5, f: 7 });
+    });
+
+    it('defaults gradientTransform to identity, and inherits it via href when the referencing gradient omits it', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs>' +
+                '<linearGradient id="base" gradientTransform="translate(3,4)"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/></linearGradient>' +
+                '<linearGradient id="derived" href="#base"/>' +
+                '</defs><rect width="10" height="10" fill="url(#derived)"/></svg>',
+        );
+        const def = doc.gradients.get('derived');
+        expect(def?.gradientTransform).toEqual({ a: 1, b: 0, c: 0, d: 1, e: 3, f: 4 });
+    });
+
+    it('resolves stop-color="inherit" to the parent gradient element\'s own stop-color', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><linearGradient id="g" stop-color="#00ff00"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="inherit"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/></svg>',
+        );
+        const def = doc.gradients.get('g');
+        expect(def?.stops[1].color).toEqual({ r: 0, g: 255, b: 0 });
+    });
+
+    it('resolves stop-color="currentColor" against the gradient element\'s own color, not the shape using it', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><linearGradient id="g" color="#770000"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="currentColor"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)" color="#0000ff"/></svg>',
+        );
+        const def = doc.gradients.get('g');
+        expect(def?.stops[1].color).toEqual({ r: 0x77, g: 0, b: 0 });
+    });
+
+    it('falls back to black for stop-color="inherit" when no ancestor sets stop-color', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><defs><linearGradient id="g"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="inherit"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/></svg>',
+        );
+        const def = doc.gradients.get('g');
+        expect(def?.stops[1].color).toEqual({ r: 0, g: 0, b: 0 });
+    });
+
     it('inherits stops/coords from another gradient via href', () => {
         const doc = parseSvgDocument(
             '<svg viewBox="0 0 100 100"><defs>' +

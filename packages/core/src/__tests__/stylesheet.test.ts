@@ -47,6 +47,14 @@ describe('parseSvgDocument (<style> class/id/tag rules)', () => {
         expect(doc.warnings).toEqual([]);
     });
 
+    it('strips @media blocks entirely, so rules inside never apply (a static PDF page has no viewport breakpoints)', () => {
+        const doc = parseSvgDocument(
+            '<svg viewBox="0 0 100 100"><style>.big { fill: #00ff00; } @media (min-width: 1px) { .big { fill: #ff0000; } }</style><rect class="big" width="5" height="5"/></svg>',
+        );
+        expect(shapesOf(doc)[0].fill).toEqual({ r: 0, g: 255, b: 0 });
+        expect(doc.warnings).toEqual([]);
+    });
+
     it('applies a descendant combinator selector', () => {
         const doc = parseSvgDocument(
             '<svg viewBox="0 0 100 100"><style>g .big { fill: #ff0000; }</style><rect class="big" width="5" height="5"/><g><rect class="big" width="5" height="5"/></g></svg>',

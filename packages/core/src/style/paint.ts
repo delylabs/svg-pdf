@@ -12,7 +12,7 @@ import type {
     TextTransform,
 } from '../types';
 import { parseFloats } from '../geometry/matrix';
-import { CSS_NAMED_COLORS, parseSvgColor, type RgbColor } from './color';
+import { CSS_NAMED_COLORS, parseSvgColor, resolveCurrentColor } from './color';
 import { resolveGradientDef, type GradientDef } from './gradient';
 import { URL_REF_RE } from './refs';
 import { type CssRule, readCssOnly, readPresentation } from './stylesheet';
@@ -266,33 +266,6 @@ export const applyTextTransform = (text: string, transform: TextTransform): stri
 // Standard-14 fonts use WinAnsi-ish encoding (~Latin-1); anything beyond that silently renders blank, so it's worth a warning.
 export const hasUnencodableChar = (text: string): boolean =>
     Array.from(text).some((ch) => (ch.codePointAt(0) ?? 0) > 255);
-
-/*
- * `currentColor` refers to the CSS `color` property's computed value on the
- * element that uses it — a normal *inherited* CSS property, but a different
- * inheritance chain from fill/stroke's own (which flows through `ShapePaint`/
- * `resolvePaint`'s `inherited` parameter, not through `color`). Rather than
- * threading a second inherited value through every recursive walk call for a
- * keyword that's rare in practice, this walks up the DOM ancestor chain
- * directly instead — lazily, only when `currentColor` is actually
- * encountered — same parent-walking pattern `style/domAdapter.ts` already
- * uses for CSS selector matching. Stops at the document node (its
- * `parentNode` is never an Element) and falls back to black to match the
- * pre-existing default when no ancestor sets `color` at all.
- */
-const resolveCurrentColor = (el: Element, cssRules: readonly CssRule[] | undefined): RgbColor => {
-    let node: Element | null = el;
-    while (node) {
-        const raw = readPresentation(node, 'color', cssRules);
-        if (raw !== null) {
-            const parsed = parseSvgColor(raw);
-            if (parsed) return parsed;
-        }
-        const parent: Node | null = node.parentNode;
-        node = parent && parent.nodeType === 1 ? (parent as Element) : null;
-    }
-    return CSS_NAMED_COLORS.black;
-};
 
 // Resolves fill/stroke, falling back to `inherited` for anything unset on `el`.
 export const resolvePaint = (el: Element, inherited: ShapePaint, ctx: PaintContext): ShapePaint => {
