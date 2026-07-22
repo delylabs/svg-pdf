@@ -6,12 +6,21 @@ Not just "worker-safe" — every package should run in all three environments. A
 
 ## Feature gaps
 
-`<mask>` and `filter="url(#...)"` (see `docs/supported-features.md`'s "Not yet supported" list) are both blocked on external constraints, not svg-pdf's own work — `<mask>` needs `@libpdf/core` to expose soft-mask support first, and `filter` is a hard PDF-format limitation. Nothing actionable remains here for now.
+Actionable gaps — no technical blocker, just not done yet. Full detail on each lives in `docs/supported-features.md`, under "Things to know" → "Not yet implemented". Planned to be picked off gradually after the npm publish below.
 
-## Before npm publish: spec audit
+- `<clipPath>` content limited to shapes/`<g>`/`<use>` — text, images, etc. inside one are skipped instead of supported.
+- Opacity on a `<g>` isn't isolated — overlapping children inside an opacity group look more transparent than they should.
+- `@media` blocks inside `<style>` are discarded, not evaluated.
+- `<switch>` always shows its first alternative without checking its condition.
+- `stroke-width` as a percentage isn't resolved against the viewport.
 
-Go feature-by-feature through `docs/supported-features.md`'s "Supported" list, checking each one against the relevant SVG2/PDF spec section plus its existing tests/fixtures — re-verifying what's already claimed as supported, not searching for net-new features. (A full read of the SVG2/PDF specs from scratch is out of scope; that's a much bigger, open-ended effort than this project needs right now.)
+## Spec audit — done
 
-## After that
+- Phase 1: test file relocation — done
+- Phase 2: spec-compliance fixes — done
+- Phase 3: coverage gaps from the audit — done
+- Phase 4: polish, API surface, and docs — done
 
-npm publish.
+## To do
+
+Publish prep (build output + `exports` maps instead of `main: src/index.ts`), then npm publish.

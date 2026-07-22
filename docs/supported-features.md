@@ -4,6 +4,11 @@ This page lists which SVG features svg-pdf can turn into a PDF, which ones have 
 
 ## Supported
 
+### Document size
+
+- The root `<svg>`'s `width`/`height` can be given in physical units (`mm`, `cm`, `in`, `pt`, `pc`), not just plain numbers — this is how tools like LibreOffice commonly export a page-sized SVG, and svg-pdf converts them correctly instead of misreading the unit suffix as part of the number.
+- Anywhere one element points at another by id — `<use>`, `<image>`, `<a>`, `<textPath>`, gradients, patterns, and markers all support this — both the modern `href` attribute and the older `xlink:href` spelling work, so it doesn't matter which one the SVG was authored with.
+
 ### Shapes and grouping
 
 - Basic shapes: `<path>`, `<rect>`, `<circle>`, `<ellipse>`, `<line>`, `<polygon>`, `<polyline>`.
@@ -19,18 +24,23 @@ This page lists which SVG features svg-pdf can turn into a PDF, which ones have 
 - Linear and radial gradients (smooth color transitions).
 - `<pattern>` — a small piece of artwork repeated ("tiled") to fill a shape, like a checkerboard or a texture. See the caveats below for two limitations on this.
 - `fill="currentColor"`/`stroke="currentColor"` picks up its color from the separate CSS `color` property — the element's own `color` if it sets one, otherwise the nearest ancestor's (`<g color="red">`, a `style=""` attribute, or a `<style>` rule all work), falling back to black only if nothing up the chain sets `color` at all. This is what makes icon libraries that ship `fill="currentColor"` (so the icon's color can be set from the outside) work as intended.
+- A gradient or `<pattern>` can copy another one's stops/tiles with `href="#other"` instead of repeating them, only overriding what it wants to change (like its own position or transform) — a common pattern in Illustrator exports, where one gradient defines the colors and several others reuse them at different angles or positions.
+- Colors can be written as 3- or 6-digit hex (`#f00`/`#ff0000`), `rgb()`, `hsl()`/`hsla()`, any of the 147 standard CSS color names (`cornflowerblue`, `rebeccapurple`, etc.), or `transparent`.
 
 ### Markers (arrowheads and dots on line vertices)
 
-`<marker>` lets you automatically place a small shape (like an arrowhead) at the start, middle, or end points of a line or path. Supported: `marker-start`/`marker-mid`/`marker-end`, auto-orienting to match the line's direction (`orient="auto"`/`"auto-start-reverse"`) or a fixed angle, `markerUnits` (whether the marker scales with the stroke width), `refX`/`refY` (the marker's own anchor point), its own `viewBox`, and `overflow="visible"`. See the caveats below for what marker _content_ can and can't include.
+`<marker>` lets you automatically place a small shape (like an arrowhead) at the start, middle, or end points of a line or path. Supported: `marker-start`/`marker-mid`/`marker-end`, auto-orienting to match the line's direction (`orient="auto"`/`"auto-start-reverse"`) or a fixed angle, `markerUnits` (whether the marker scales with the stroke width), `refX`/`refY` (the marker's own anchor point), its own `viewBox`, and `overflow="visible"`. Like gradients and patterns, one `<marker>` can reuse another's attributes/content via `href="#other"` instead of repeating them. See the caveats below for what marker _content_ can and can't include.
 
 ### Clipping shapes
 
-`<clipPath>` lets you "cut out" a shape so only part of what's underneath shows through — including clip regions sized as a percentage of the shape they're applied to (`objectBoundingBox` units), not just fixed page coordinates.
+`<clipPath>` lets you "cut out" a shape so only part of what's underneath shows through — including clip regions sized as a percentage of the shape they're applied to (`objectBoundingBox` units), not just fixed page coordinates. `clip-rule` (`nonzero`/`evenodd`) — the same "which side of a crossing line counts as inside" rule `fill-rule` uses, just for what counts as inside the clip region — is supported too.
 
 ### Strokes and blending
 
-- `stroke-dasharray` (dashed/dotted line patterns).
+- `fill-opacity`/`stroke-opacity`/`opacity` on a single shape or piece of text (not a group — see the caveat below for the one thing that's different about a group's `opacity`).
+- `fill-rule` (`nonzero`/`evenodd` — the rule for what counts as "inside" a shape whose outline crosses itself, e.g. a star drawn with overlapping lines).
+- `stroke-linecap` (`butt`/`round`/`square` — how the very end of an open stroke is capped) and `stroke-linejoin` (`miter`/`round`/`bevel` — how two stroke segments meet at a corner).
+- `stroke-dasharray` (dashed/dotted line patterns) and `stroke-dashoffset` (shifting where along the pattern the dashes start).
 - `stroke-miterlimit` (controls the limit on ratio of miter length to stroke-width for miter joins, defaulting to SVG's spec default of 4).
 - `paint-order` (controls the order in which fill, stroke, and markers are drawn, e.g. drawing stroke underneath fill so a thick outline doesn't obscure the shape's interior). Fill and stroke can be freely reordered; markers always draw last no matter where `markers` appears in the value — asking for markers to draw earlier triggers a warning, and they're drawn last anyway.
 - `vector-effect="non-scaling-stroke"` (keeps a stroke's width constant in user space regardless of scaling transforms on the element or its ancestors).
@@ -45,6 +55,7 @@ Full CSS selector support — not just simple `tag`/`.class`/`#id` selectors, bu
 - Text alignment (`text-anchor`) that correctly accounts for an entire run of text, not just one piece at a time.
 - `text-transform` (automatic upper/lowercasing).
 - `letter-spacing`/`word-spacing`.
+- `font-size` given as a relative `em` value (e.g. `1.5em`), which multiplies the inherited font size instead of setting an absolute one.
 - Preserving whitespace exactly as written (`xml:space="preserve"`/`white-space: pre`), instead of collapsing extra spaces the way SVG normally does.
 - Per-character positioning: `dx`/`dy`/`rotate` with a list of values on `<text>`/`<tspan>`, letting you nudge or rotate individual characters instead of a whole line.
 - `<textPath>` — text that flows along a curved line instead of a straight one: each character is individually positioned and rotated along the path's curve, respecting `startOffset` (px or %), `pathLength`, `text-anchor`, custom embedded fonts (`@font-face` / `fetchFont`), nested `<tspan>`/`<a>` elements, and both `lengthAdjust="spacing"` and `lengthAdjust="spacingAndGlyphs"` (stretching/compressing glyphs horizontally).
@@ -52,7 +63,7 @@ Full CSS selector support — not just simple `tag`/`.class`/`#id` selectors, bu
 
 ### Images
 
-- `<image>` elements whose image data is embedded directly inside the SVG file (`data:` URIs) always work.
+- `<image>` elements whose image data is embedded directly inside the SVG file (`data:` URIs) always work, including `opacity` on the `<image>` itself.
 - `<image>` elements pointing at an external web address (`http`/`https`) are only fetched if you explicitly supply a `fetchImage` function — see [`usage.md`](usage.md). This isn't a missing feature; it's a deliberate safety default, since automatically fetching arbitrary URLs from an SVG someone else gave you could be abused to make your server request things it shouldn't (an attack technique called SSRF).
 - An `<image>` whose data is itself an SVG document (a `data:image/svg+xml...` URI, or an `.svg` file fetched via `fetchImage`) is rendered as real vector content — parsed and drawn the same way the outer SVG is, not rasterized — fit into the `<image>`'s box the same way `meet`/`none` sizing already works for raster images (alignment keywords beyond centering aren't supported here either, matching the existing raster `preserveAspectRatio` behavior). A payload that references itself (directly or through a longer cycle) is caught by a nesting-depth limit and skipped with a warning instead of hanging.
 

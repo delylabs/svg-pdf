@@ -78,20 +78,19 @@ export type FetchFont = (query: {
  * module (`drawShape.ts`, `drawText.ts`, `drawTextPath.ts`, `drawImage.ts`,
  * `drawMarker.ts`), sharing state through the `DrawContext` built below.
  */
-export const embedSvgInPdf = async (
-    doc: LibPDF,
-    svg: {
-        svgText: string;
-        rotation: number;
-        name?: string;
-        pageSize?: { width: number; height: number };
-        orientation?: PageOrientation;
-        margin?: number;
-        fetchImage?: FetchImage;
-        fetchFont?: FetchFont;
-        normalizeImage?: NormalizeImage;
-    },
-): Promise<EmbedSvgResult> => {
+export interface EmbedSvgOptions {
+    svgText: string;
+    rotation: number;
+    name?: string;
+    pageSize?: { width: number; height: number };
+    orientation?: PageOrientation;
+    margin?: number;
+    fetchImage?: FetchImage;
+    fetchFont?: FetchFont;
+    normalizeImage?: NormalizeImage;
+}
+
+export const embedSvgInPdf = async (doc: LibPDF, svg: EmbedSvgOptions): Promise<EmbedSvgResult> => {
     const {
         svgText,
         rotation,

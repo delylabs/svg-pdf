@@ -5,4 +5,12 @@
  * instruction type maps onto PDF operators.
  */
 
-export { embedSvgInPdf, type EmbedSvgResult, type FetchFont, type FetchImage } from './embed';
+export {
+    embedSvgInPdf,
+    type EmbedSvgOptions,
+    type EmbedSvgResult,
+    type FetchFont,
+    type FetchImage,
+    type NormalizeImage,
+} from './embed';
+export { type PageOrientation } from './pageGeometry';

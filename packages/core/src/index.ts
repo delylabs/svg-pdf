@@ -4,13 +4,23 @@
  * involved, so this runs in the PDF worker like every other codec here.
  *
  * Two things a DOM-based parser would normally lean on — text measuring and
- * CSS `<style>` cascade parsing — both require a real attached `document`,
- * which doesn't exist in a Web Worker, so both are hand-rolled here instead:
+ * CSS `<style>` parsing — both require a real attached `document`, which
+ * doesn't exist in a Web Worker, so both are hand-rolled here instead.
  * `<text>` (see the "best effort" doc comment above `walkTextElement` in
- * `parse/text.ts`) draws with PDF's own standard-14 fonts rather than
- * measuring/matching real ones, and `<style>` block support (see the doc
- * comment above `CssRule` in `style/stylesheet.ts`) only covers simple
- * tag/class/id selectors, not the full CSS cascade.
+ * `parse/text.ts`) draws with PDF's own standard-14 fonts by default —
+ * measuring/matching a real requested font only happens if the adapter
+ * embedding the PDF supplies one (see `fontFaces` below). `<style>` block
+ * support (see the doc comment above `CssRule` in `style/stylesheet.ts`)
+ * handles real CSS selector matching — combinators, pseudo-classes,
+ * attribute selectors, comma-separated lists, not just plain tag/class/id —
+ * and a real specificity/source-order cascade, just without `!important`;
+ * `@media`/`@keyframes` blocks are parsed and stripped rather than
+ * evaluated, since a static PDF page has no viewport breakpoints or
+ * animation timeline for them to apply to. `@font-face` rules with an
+ * inline `data:` URI are also parsed (see `fontFaces` on
+ * `ParsedSvgDocument`) — actually embedding them into the PDF as real fonts
+ * is the adapter's job, not this package's, so it's exposed as parsed data
+ * rather than acted on here.
  */
 
 export type {
