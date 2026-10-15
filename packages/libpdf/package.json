@@ -1,6 +1,6 @@
 {
     "name": "@svg-pdf/libpdf",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "SVG to real PDF vectors, embedded via @libpdf/core",
     "keywords": [
         "svg",
@@ -51,9 +51,9 @@
         "@svg-pdf/core": "^0.1.0"
     },
     "peerDependencies": {
-        "@libpdf/core": "^0.4.1"
+        "@libpdf/core": "^0.4.1 || ^0.5.2"
     },
     "devDependencies": {
-        "@libpdf/core": "^0.4.1"
+        "@libpdf/core": "^0.5.2"
     }
 }

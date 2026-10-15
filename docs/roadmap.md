@@ -28,3 +28,7 @@ Actionable gaps — no technical blocker, just not done yet. Full detail on each
 ## To do
 
 Nothing scheduled — pick off items from "Feature gaps" above as they come up.
+
+## Future: jsPDF adapter
+
+Side project, no rush. jsPDF is the pick for a second adapter, mainly because its tiling pattern support solves two of the six `@libpdf/core` limitations natively. Soft mask, blend mode, and gradient reflect/repeat still need to be built from scratch (no jsPDF example to copy). When code ends up shared between the jsPDF adapter and `@svg-pdf/libpdf`, split it into a new package named `@svg-pdf/adapter-kit`.
